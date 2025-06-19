@@ -49,7 +49,14 @@
       "Bash(mv:*)",
       "Bash(true)",
       "Bash(git rm:*)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(./setup-github-repo.sh)",
+      "Bash(gh repo create:*)",
+      "Bash(git branch:*)",
+      "Bash(vercel ls:*)",
+      "Bash(vercel domains:*)",
+      "Bash(vercel alias:*)",
+      "Bash(vercel:*)"
     ],
     "deny": []
   }

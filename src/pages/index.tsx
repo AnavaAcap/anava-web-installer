@@ -269,10 +269,13 @@ function InstallerApp() {
           <VStack align="start" spacing={1}>
             <HStack align="baseline">
               <Heading size="xl">Anava Cloud Installer</Heading>
-              <Badge colorScheme="green" ml={2}>v1.50-STABLE</Badge>
+              <Badge colorScheme="green" ml={2}>v2.0.0-STANDALONE</Badge>
             </HStack>
             <Text color="gray.500">
               Guided installation for Anava IoT Security Platform on Google Cloud
+            </Text>
+            <Text fontSize="xs" color="gray.400">
+              NOTE: v2.0 - Standalone installer with enhanced IAM permissions for TVM endpoint
             </Text>
           </VStack>
           <IconButton
