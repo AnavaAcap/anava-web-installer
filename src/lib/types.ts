@@ -23,6 +23,8 @@ export interface InstallResult {
   setupCommand?: string;
   configurationSummary?: Record<string, any>;
   error?: string;
+  apiGatewayWarning?: string;
+  shouldRetryLater?: boolean;
 }
 
 export type InstallStatus = 'ready' | 'authenticating' | 'selecting' | 'installing' | 'completed' | 'error';

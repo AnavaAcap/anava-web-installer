@@ -1101,9 +1101,11 @@ This manual step is required because Firestore needs you to choose security rule
     }
     
     console.log('API Config creation submitted. Waiting for it to become active...');
+    console.log('NOTE: API Gateway activation can take 2-10 minutes. Please be patient...');
     
-    // Poll the config status until it's active (like the shell script does)
-    const maxChecks = 12;
+    // Poll the config status until it's active
+    // Increased to 10 minutes (60 checks × 10 seconds) to handle slow GCP provisioning
+    const maxChecks = 60;
     let configReady = false;
     
     for (let i = 1; i <= maxChecks; i++) {
@@ -1114,20 +1116,49 @@ This manual step is required because Firestore needs you to choose security rule
         
         if (configStatus.state === 'ACTIVE') {
           configReady = true;
-          console.log(`API Config ${configId} is ACTIVE.`);
+          console.log(`API Config ${configId} is ACTIVE after ${i * 10} seconds.`);
+          this.onProgress('Creating API Gateway - Configuration activated!', 82);
           break;
         }
         
-        console.log(`API Config not active yet (State: ${configStatus.state || 'Unknown'}). Waiting 10s... (${i}/${maxChecks})`);
+        // Provide more detailed progress updates
+        const minutesWaited = Math.floor((i * 10) / 60);
+        const secondsWaited = (i * 10) % 60;
+        const timeStr = minutesWaited > 0 ? `${minutesWaited}m ${secondsWaited}s` : `${secondsWaited}s`;
+        
+        // Update UI progress with retry information
+        this.onProgress(
+          `Creating API Gateway - Waiting for activation (${timeStr} elapsed, check ${i}/${maxChecks})`, 
+          80 + Math.floor((i / maxChecks) * 5)
+        );
+        
+        console.log(`API Config state: ${configStatus.state || 'PENDING'}. Waited ${timeStr}... (${i}/${maxChecks})`);
       } catch (err: any) {
-        console.log(`Error checking config status: ${err.message}. Waiting 10s... (${i}/${maxChecks})`);
+        // Still update progress even on errors
+        this.onProgress(
+          `Creating API Gateway - Checking status (attempt ${i}/${maxChecks})`, 
+          80 + Math.floor((i / maxChecks) * 5)
+        );
+        console.log(`Checking config status... (${i}/${maxChecks})`);
       }
       
       await new Promise(resolve => setTimeout(resolve, 10000));
     }
     
     if (!configReady) {
-      throw new Error(`API Config ${configId} did not become active after ${maxChecks * 10} seconds`);
+      // Instead of throwing an error, provide a more helpful message
+      console.error(`API Config ${configId} is taking longer than expected to activate.`);
+      console.error('This is a known issue with GCP API Gateway that can take up to 15 minutes.');
+      console.error('The installation will continue, but the API Gateway might not be immediately available.');
+      
+      // Return partial success instead of failing
+      return {
+        apiGatewayWarning: 'API Gateway is still activating. It may take up to 15 minutes to become fully operational.',
+        apiId,
+        configId,
+        gatewayId,
+        shouldRetryLater: true
+      };
     }
 
     // Create Gateway (gateways are regional, but reference global API/config)

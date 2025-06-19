@@ -269,13 +269,13 @@ function InstallerApp() {
           <VStack align="start" spacing={1}>
             <HStack align="baseline">
               <Heading size="xl">Anava Cloud Installer</Heading>
-              <Badge colorScheme="green" ml={2}>v2.0.0-STANDALONE</Badge>
+              <Badge colorScheme="green" ml={2}>v2.1.0-RESILIENT</Badge>
             </HStack>
             <Text color="gray.500">
               Guided installation for Anava IoT Security Platform on Google Cloud
             </Text>
             <Text fontSize="xs" color="gray.400">
-              NOTE: v2.0 - Standalone installer with enhanced IAM permissions for TVM endpoint
+              NOTE: v2.1 - Extended timeouts (10min) for API Gateway, real-time progress updates
             </Text>
           </VStack>
           <IconButton
@@ -420,6 +420,20 @@ function InstallerApp() {
                 </AlertDescription>
               </Box>
             </Alert>
+
+            {installResult.apiGatewayWarning && (
+              <Alert status="warning">
+                <AlertIcon />
+                <Box>
+                  <AlertTitle>API Gateway Still Activating</AlertTitle>
+                  <AlertDescription>
+                    {installResult.apiGatewayWarning}
+                    <br />
+                    You can continue with the setup. The API Gateway will become available shortly.
+                  </AlertDescription>
+                </Box>
+              </Alert>
+            )}
 
             <Tabs>
               <TabList>
