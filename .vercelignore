@@ -1,0 +1,11 @@
+# Ignore files for Vercel deployment
+.env.local
+.env*.local
+node_modules
+.next
+out
+coverage
+.git
+README.md
+deploy-guide.md
+cloud-deployment-guide.md

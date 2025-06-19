@@ -1,0 +1,34 @@
+{
+  "name": "anava-cloud-installer",
+  "version": "1.0.0",
+  "description": "One-click installer for Anava IoT Security Platform on Google Cloud",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@chakra-ui/react": "^2.8.0",
+    "@emotion/react": "^11.11.0",
+    "@emotion/styled": "^11.11.0",
+    "@react-oauth/google": "^0.12.1",
+    "axios": "^1.6.0",
+    "framer-motion": "^10.0.0",
+    "next": "14.2.30",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-icons": "^5.5.0",
+    "zustand": "^4.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "eslint": "^8.0.0",
+    "eslint-config-next": "14.1.0",
+    "typescript": "^5.0.0"
+  }
+}
