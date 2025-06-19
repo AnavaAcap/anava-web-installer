@@ -444,14 +444,17 @@ Note: You can set budget alerts to control costs.`);
       addRoleBinding('roles/aiplatform.user', `serviceAccount:${serviceAccounts.vertex_ai_sa_email}`);
       addRoleBinding('roles/storage.objectAdmin', `serviceAccount:${serviceAccounts.vertex_ai_sa_email}`);
       addRoleBinding('roles/datastore.user', `serviceAccount:${serviceAccounts.vertex_ai_sa_email}`);
+      addRoleBinding('roles/iam.workloadIdentityUser', `serviceAccount:${serviceAccounts.vertex_ai_sa_email}`);
     }
 
     if (serviceAccounts.device_auth_sa_email) {
       addRoleBinding('roles/cloudfunctions.invoker', `serviceAccount:${serviceAccounts.device_auth_sa_email}`);
+      addRoleBinding('roles/firebaseauth.admin', `serviceAccount:${serviceAccounts.device_auth_sa_email}`);
     }
 
     if (serviceAccounts.tvm_sa_email) {
       addRoleBinding('roles/cloudfunctions.invoker', `serviceAccount:${serviceAccounts.tvm_sa_email}`);
+      addRoleBinding('roles/iam.serviceAccountTokenCreator', `serviceAccount:${serviceAccounts.tvm_sa_email}`);
     }
 
     await this.gcpApiCall(
@@ -461,6 +464,41 @@ Note: You can set budget alerts to control costs.`);
         body: JSON.stringify({ policy })
       }
     );
+
+    // Grant TVM SA permission to impersonate Vertex AI SA
+    if (serviceAccounts.tvm_sa_email && serviceAccounts.vertex_ai_sa_email) {
+      console.log('Granting TVM SA permission to impersonate Vertex AI SA...');
+      
+      const saPolicy = await this.gcpApiCall(
+        `https://iam.googleapis.com/v1/projects/${this.config.projectId}/serviceAccounts/${serviceAccounts.vertex_ai_sa_email}:getIamPolicy`,
+        { method: 'POST', body: JSON.stringify({}) }
+      );
+
+      // Add TVM SA as token creator for Vertex AI SA
+      const tvmMember = `serviceAccount:${serviceAccounts.tvm_sa_email}`;
+      const tokenCreatorRole = 'roles/iam.serviceAccountTokenCreator';
+      
+      const existingBinding = saPolicy.bindings?.find((b: any) => b.role === tokenCreatorRole);
+      if (existingBinding) {
+        if (!existingBinding.members.includes(tvmMember)) {
+          existingBinding.members.push(tvmMember);
+        }
+      } else {
+        if (!saPolicy.bindings) saPolicy.bindings = [];
+        saPolicy.bindings.push({
+          role: tokenCreatorRole,
+          members: [tvmMember]
+        });
+      }
+
+      await this.gcpApiCall(
+        `https://iam.googleapis.com/v1/projects/${this.config.projectId}/serviceAccounts/${serviceAccounts.vertex_ai_sa_email}:setIamPolicy`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ policy: saPolicy })
+        }
+      );
+    }
   }
 
   private async setupFirebase() {
