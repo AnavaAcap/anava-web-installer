@@ -1357,17 +1357,59 @@ This manual step is required because Firestore needs you to choose security rule
       try {
         // Use Service Management API to deploy the OpenAPI spec
         // This is equivalent to: gcloud endpoints services deploy openapi.yaml
+        // The API expects a ConfigSource with files, not a direct openapi field
         const configResponse = await this.gcpApiCall(
-          `https://servicemanagement.googleapis.com/v1/services/${apiDetails.managedService}/configs`,
+          `https://servicemanagement.googleapis.com/v1/services/${apiDetails.managedService}/configs:submit`,
           {
             method: 'POST',
             body: JSON.stringify({
-              openapi: openApiSpec
+              configSource: {
+                files: [
+                  {
+                    filePath: 'openapi.yaml',
+                    fileContents: Buffer.from(openApiSpec).toString('base64'),
+                    fileType: 'OPEN_API_YAML'
+                  }
+                ]
+              }
             })
           }
         );
         
-        console.log('✅ Service configuration deployed successfully');
+        console.log('Service configuration submission initiated. Response:', configResponse);
+        
+        // The submit API returns an Operation, we should check if it's done
+        if (configResponse.name) {
+          console.log('Waiting for service configuration operation to complete...');
+          // Poll the operation status
+          let operationComplete = false;
+          let pollCount = 0;
+          const maxPolls = 12; // 2 minutes max
+          
+          while (!operationComplete && pollCount < maxPolls) {
+            await new Promise(resolve => setTimeout(resolve, 10000)); // Wait 10 seconds
+            try {
+              const opStatus = await this.gcpApiCall(
+                `https://servicemanagement.googleapis.com/v1/${configResponse.name}`
+              );
+              if (opStatus.done) {
+                operationComplete = true;
+                console.log('✅ Service configuration deployed successfully');
+              } else {
+                pollCount++;
+                console.log(`Service configuration still processing... (${pollCount}/${maxPolls})`);
+              }
+            } catch (err) {
+              console.log('Error checking operation status:', err);
+              pollCount++;
+            }
+          }
+          
+          if (!operationComplete) {
+            console.warn('⚠️  Service configuration operation is taking longer than expected');
+          }
+        }
+        
         console.log('Waiting 30 seconds for service configuration to propagate...');
         await new Promise(resolve => setTimeout(resolve, 30000));
         
@@ -1375,11 +1417,19 @@ This manual step is required because Firestore needs you to choose security rule
         console.log(`Enabling managed service: ${apiDetails.managedService}`);
         this.onProgress('Enabling API Gateway managed service...', 82);
         
-        await this.gcpApiCall(
-          `https://serviceusage.googleapis.com/v1/projects/${this.config.projectId}/services/${apiDetails.managedService}:enable`,
-          { method: 'POST' }
-        );
-        console.log('✅ Managed service enabled successfully');
+        try {
+          await this.gcpApiCall(
+            `https://serviceusage.googleapis.com/v1/projects/${this.config.projectId}/services/${apiDetails.managedService}:enable`,
+            { method: 'POST' }
+          );
+          console.log('✅ Managed service enabled successfully');
+        } catch (enableErr: any) {
+          if (enableErr.message.includes('already enabled')) {
+            console.log('✅ Managed service already enabled');
+          } else {
+            throw enableErr;
+          }
+        }
         
         // Wait for the service to fully propagate
         console.log('Waiting 30 seconds for managed service to propagate...');
