@@ -26,6 +26,8 @@ export interface InstallResult {
   error?: string;
   apiGatewayWarning?: string;
   shouldRetryLater?: boolean;
+  resumedInstallation?: boolean;
+  skippedSteps?: string[];
 }
 
 export type InstallStatus = 'ready' | 'authenticating' | 'selecting' | 'installing' | 'completed' | 'error';

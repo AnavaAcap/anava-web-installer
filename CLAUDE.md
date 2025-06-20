@@ -1,7 +1,7 @@
 # Project Context for Claude
 
 ## Quick Reference
-- **Current Version**: v2.1.1-IRONCLAD
+- **Current Version**: v2.1.2-SECURITY
 - **Domains**: installer.anava.ai (prod), dev.anava.ai (staging)
 - **Key Fix**: Extended API Gateway timeout from 2min to 10min
 

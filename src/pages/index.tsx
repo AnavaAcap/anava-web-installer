@@ -37,6 +37,9 @@ import { FiSun, FiMoon, FiCheck, FiCopy, FiExternalLink } from 'react-icons/fi';
 import { AnavaGCPInstaller } from '../lib/gcp-installer';
 import { InstallStatus, InstallResult, GoogleProject } from '../lib/types';
 import { InstallationStateManager } from '../lib/installation-state';
+import { SecureTokenManager, SecureApiClient } from '../lib/secure-token-manager';
+import { sanitizeProjectId, sanitizeRegion, sanitizeErrorMessage, validators } from '../lib/input-sanitizer';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 
 const GOOGLE_CLIENT_ID = (process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '').trim();
 const GOOGLE_SCOPES = [
@@ -44,17 +47,17 @@ const GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/firebase',
 ];
 
-// Debug logging
-if (typeof window !== 'undefined') {
-  console.log('Google Client ID configured:', GOOGLE_CLIENT_ID ? `${GOOGLE_CLIENT_ID.substring(0, 20)}...` : 'NOT SET');
+// Environment check (no sensitive data logging)
+if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
   console.log('Environment:', process.env.NODE_ENV);
+  console.log('OAuth configured:', !!GOOGLE_CLIENT_ID);
 }
 
 function InstallerApp() {
   const [status, setStatus] = useState<InstallStatus>('ready');
   const [progress, setProgress] = useState(0);
   const [currentStep, setCurrentStep] = useState('');
-  const [accessToken, setAccessToken] = useState('');
+  const [tokenId, setTokenId] = useState('');
   const [projects, setProjects] = useState<GoogleProject[]>([]);
   const [selectedProject, setSelectedProject] = useState('');
   const [region, setRegion] = useState('us-central1');
@@ -100,37 +103,25 @@ function InstallerApp() {
   };
 
   // Define fetchProjects before useEffect
-  const fetchProjects = async (token: string) => {
+  const fetchProjects = async (tokenId: string) => {
     try {
-      console.log('Fetching projects with token:', token.substring(0, 10) + '...');
-      const response = await fetch(
-        'https://cloudresourcemanager.googleapis.com/v1/projects?filter=lifecycleState:ACTIVE',
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        }
-      );
+      const apiClient = new SecureApiClient(tokenId);
+      const data = await apiClient.fetchProjects();
       
-      console.log('Projects response status:', response.status);
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Projects fetch error:', errorText);
-        throw new Error(`Failed to fetch projects: ${response.status}`);
+      if (process.env.NODE_ENV === 'development') {
+        console.log('Found projects:', data.projects?.length || 0);
       }
       
-      const data = await response.json();
-      console.log('Found projects:', data.projects?.length || 0);
       setProjects(data.projects || []);
       
       if (data.projects?.length === 1) {
-        setSelectedProject(data.projects[0].projectId);
-        checkForIncompleteInstall(data.projects[0].projectId);
+        const projectId = sanitizeProjectId(data.projects[0].projectId);
+        setSelectedProject(projectId);
+        checkForIncompleteInstall(projectId);
       }
     } catch (err) {
-      console.error('Error fetching projects:', err);
-      setError('Failed to fetch Google Cloud projects. Check console for details.');
+      const sanitizedError = sanitizeErrorMessage(err);
+      setError(`Failed to fetch Google Cloud projects: ${sanitizedError}`);
       setStatus('error');
     }
   };
@@ -139,21 +130,26 @@ function InstallerApp() {
   useEffect(() => {
     const hash = window.location.hash;
     if (hash) {
-      console.log('Found hash in URL:', hash);
       const params = new URLSearchParams(hash.substring(1));
       const token = params.get('access_token');
       if (token) {
-        console.log('Found access token in URL, processing...');
-        setAccessToken(token);
+        // Store token securely and get token ID
+        const secureTokenId = SecureTokenManager.storeToken(token);
+        setTokenId(secureTokenId);
         setStatus('selecting');
-        fetchProjects(token);
-        // Clean up URL
+        fetchProjects(secureTokenId);
+        // Clean up URL immediately to prevent token exposure
         window.history.replaceState({}, document.title, window.location.pathname);
       }
     }
+    
+    // Cleanup tokens on unmount
+    return () => {
+      SecureTokenManager.clearAllTokens();
+    };
   }, []);
 
-  // Manual OAuth URL construction for debugging
+  // Manual OAuth URL construction (secure, no logging)
   const getOAuthUrl = () => {
     const params = new URLSearchParams({
       client_id: GOOGLE_CLIENT_ID,
@@ -164,21 +160,27 @@ function InstallerApp() {
       state: 'pass-through value',
     });
     
-    const url = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
-    console.log('OAuth URL:', url);
-    console.log('Redirect URI being used:', window.location.origin);
-    return url;
+    return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
   };
 
   const googleLogin = useGoogleLogin({
     onSuccess: async (response) => {
-      console.log('OAuth success, got token');
-      setAccessToken(response.access_token);
-      setStatus('selecting');
-      await fetchProjects(response.access_token);
+      try {
+        // Store token securely and get token ID
+        const secureTokenId = SecureTokenManager.storeToken(response.access_token);
+        setTokenId(secureTokenId);
+        setStatus('selecting');
+        await fetchProjects(secureTokenId);
+      } catch (err) {
+        const sanitizedError = sanitizeErrorMessage(err);
+        setError(`Authentication failed: ${sanitizedError}`);
+        setStatus('error');
+      }
     },
     onError: (error) => {
-      console.error('OAuth error:', error);
+      if (process.env.NODE_ENV === 'development') {
+        console.error('OAuth error:', error);
+      }
       setError('Failed to authenticate with Google');
       setStatus('error');
     },
@@ -187,29 +189,53 @@ function InstallerApp() {
   });
 
   const handleInstall = async () => {
-    if (!selectedProject || !accessToken) return;
+    // Validate inputs
+    if (!selectedProject || !tokenId) {
+      setError('Please select a project and ensure you are authenticated.');
+      return;
+    }
+    
+    // Sanitize inputs
+    const sanitizedProjectId = sanitizeProjectId(selectedProject);
+    const sanitizedRegion = sanitizeRegion(region);
+    
+    if (!validators.projectId(sanitizedProjectId)) {
+      setError('Invalid project ID format.');
+      return;
+    }
+    
+    if (!validators.region(sanitizedRegion)) {
+      setError('Invalid region format.');
+      return;
+    }
 
     setStatus('installing');
     setProgress(0);
     setError('');
 
-    const projectName = projects.find(p => p.projectId === selectedProject)?.name || '';
+    const projectName = projects.find(p => p.projectId === sanitizedProjectId)?.name || '';
     
-    const installer = new AnavaGCPInstaller(
-      accessToken,
-      {
-        projectId: selectedProject,
-        projectName,
-        region,
-        solutionPrefix,
-      },
-      (step, prog) => {
-        setCurrentStep(step);
-        setProgress(prog);
-      }
-    );
-
     try {
+      // Get token securely
+      const token = SecureTokenManager.getToken(tokenId);
+      if (!token) {
+        throw new Error('Authentication token expired. Please login again.');
+      }
+      
+      const installer = new AnavaGCPInstaller(
+        token,
+        {
+          projectId: sanitizedProjectId,
+          projectName,
+          region: sanitizedRegion,
+          solutionPrefix,
+        },
+        (step, prog) => {
+          setCurrentStep(sanitizeErrorMessage(step));
+          setProgress(prog);
+        }
+      );
+
       const result = await installer.install();
       setInstallResult(result);
       setStatus('completed');
@@ -222,14 +248,15 @@ function InstallerApp() {
         isClosable: true,
       });
     } catch (err: any) {
-      setError(err.message || 'Installation failed');
+      const sanitizedError = sanitizeErrorMessage(err);
+      setError(sanitizedError);
       setStatus('error');
       
       // Don't show error toast for prerequisites check
-      if (!err.message.includes('PREREQUISITES_MISSING:')) {
+      if (!sanitizedError.includes('PREREQUISITES_MISSING:')) {
         toast({
           title: 'Installation failed',
-          description: err.message,
+          description: sanitizedError,
           status: 'error',
           duration: 10000,
           isClosable: true,
@@ -248,13 +275,19 @@ function InstallerApp() {
   };
 
   const retryApiKeyGeneration = async () => {
-    if (!installResult || !accessToken) return;
+    if (!installResult || !tokenId) return;
     
     setIsRetryingApiKey(true);
     
     try {
+      // Get token securely
+      const token = SecureTokenManager.getToken(tokenId);
+      if (!token) {
+        throw new Error('Authentication token expired. Please login again.');
+      }
+      
       const installer = new AnavaGCPInstaller(
-        accessToken,
+        token,
         {
           projectId: installResult.projectId!,
           region: installResult.region!,
@@ -283,9 +316,10 @@ function InstallerApp() {
         throw new Error(apiKeyResult.apiKeyError || 'Failed to create API key');
       }
     } catch (err: any) {
+      const sanitizedError = sanitizeErrorMessage(err);
       toast({
         title: 'API Key creation failed',
-        description: 'Please wait a bit longer for API Gateway to initialize',
+        description: sanitizedError.includes('expired') ? sanitizedError : 'Please wait a bit longer for API Gateway to initialize',
         status: 'warning',
         duration: 5000,
         isClosable: true,
@@ -313,13 +347,13 @@ function InstallerApp() {
           <VStack align="start" spacing={1}>
             <HStack align="baseline">
               <Heading size="xl">Anava Cloud Installer</Heading>
-              <Badge colorScheme="green" ml={2}>v2.1.1-IRONCLAD</Badge>
+              <Badge colorScheme="green" ml={2}>v2.1.2-SECURITY</Badge>
             </HStack>
             <Text color="gray.500">
               Guided installation for Anava IoT Security Platform on Google Cloud
             </Text>
             <Text fontSize="xs" color="gray.400">
-              NOTE: v2.1.1-IRONCLAD - Latest version with smart resume and comprehensive security</Text>
+              NOTE: v2.1.2-SECURITY - Latest version with smart resume and comprehensive security</Text>
           </VStack>
           <IconButton
             aria-label="Toggle color mode"
@@ -384,8 +418,9 @@ function InstallerApp() {
                 placeholder="Select a project"
                 value={selectedProject}
                 onChange={(e) => {
-                  setSelectedProject(e.target.value);
-                  checkForIncompleteInstall(e.target.value);
+                  const sanitizedValue = sanitizeProjectId(e.target.value);
+                  setSelectedProject(sanitizedValue);
+                  checkForIncompleteInstall(sanitizedValue);
                 }}
               >
                 {projects.map((project) => (
@@ -398,7 +433,7 @@ function InstallerApp() {
 
             <FormControl isRequired>
               <FormLabel>Region</FormLabel>
-              <Select value={region} onChange={(e) => setRegion(e.target.value)}>
+              <Select value={region} onChange={(e) => setRegion(sanitizeRegion(e.target.value))}>
                 {regions.map((r) => (
                   <option key={r.value} value={r.value}>
                     {r.label}
@@ -900,8 +935,10 @@ export default function Home() {
   }
 
   return (
-    <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
-      <InstallerApp />
-    </GoogleOAuthProvider>
+    <ErrorBoundary>
+      <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
+        <InstallerApp />
+      </GoogleOAuthProvider>
+    </ErrorBoundary>
   );
 }

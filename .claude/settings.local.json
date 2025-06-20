@@ -61,7 +61,9 @@
       "Bash(npm run build:*)",
       "Bash(npm test:*)",
       "Bash(rg:*)",
-      "Bash(npm run version:update:*)"
+      "Bash(npm run version:update:*)",
+      "mcp__multi-ai-collab__ask_gemini",
+      "Bash(npm run type-check:*)"
     ],
     "deny": []
   }
