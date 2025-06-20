@@ -310,7 +310,9 @@ export class AnavaGCPInstaller {
         });
       }
       
-      throw new Error(`PREREQUISITES_MISSING:${JSON.stringify(missingSteps)}`);
+      // Base64 encode the JSON to prevent sanitization from breaking the structure
+      const encodedSteps = Buffer.from(JSON.stringify(missingSteps)).toString('base64');
+      throw new Error(`PREREQUISITES_MISSING:${encodedSteps}`);
     }
     
     return { prerequisitesChecked: true };

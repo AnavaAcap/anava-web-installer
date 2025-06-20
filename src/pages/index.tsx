@@ -347,13 +347,13 @@ function InstallerApp() {
           <VStack align="start" spacing={1}>
             <HStack align="baseline">
               <Heading size="xl">Anava Cloud Installer</Heading>
-              <Badge colorScheme="green" ml={2}>v2.1.2-SECURITY</Badge>
+              <Badge colorScheme="green" ml={2}>v2.1.3-PREREQUISITES</Badge>
             </HStack>
             <Text color="gray.500">
               Guided installation for Anava IoT Security Platform on Google Cloud
             </Text>
             <Text fontSize="xs" color="gray.400">
-              NOTE: v2.1.2-SECURITY - Latest version with smart resume and comprehensive security</Text>
+              NOTE: v2.1.3 - Fixed prerequisites display for new GCP projects</Text>
           </VStack>
           <IconButton
             aria-label="Toggle color mode"
@@ -787,7 +787,10 @@ export GCP_PROJECT_ID="${installResult.projectId}"`}
                   <VStack align="stretch" spacing={4}>
                     {(() => {
                       try {
-                        const missingSteps = JSON.parse(error.split('PREREQUISITES_MISSING:')[1]);
+                        // Decode base64 encoded JSON to prevent sanitization issues
+                        const encodedData = error.split('PREREQUISITES_MISSING:')[1];
+                        const decodedJson = Buffer.from(encodedData, 'base64').toString('utf-8');
+                        const missingSteps = JSON.parse(decodedJson);
                         return missingSteps.map((step: any, index: number) => (
                           <Box key={index} p={4} borderWidth={1} borderRadius="md" borderColor="orange.300" bg="orange.50">
                             <HStack align="start" spacing={3}>
