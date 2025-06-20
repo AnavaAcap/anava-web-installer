@@ -1653,6 +1653,58 @@ paths:
       }
     } else {
       console.log('Skipping wait time for API key retry...');
+      
+      // For retries, check if managed service is enabled
+      try {
+        const apiDetails = await this.gcpApiCall(
+          `https://apigateway.googleapis.com/v1/projects/${this.config.projectId}/locations/global/apis/${apiId}`
+        );
+        
+        if (apiDetails.managedService) {
+          console.log(`Checking if managed service ${apiDetails.managedService} is enabled...`);
+          this.onProgress('Checking API Gateway managed service status...', 95);
+          
+          try {
+            // Check if the service is enabled
+            const serviceStatus = await this.gcpApiCall(
+              `https://serviceusage.googleapis.com/v1/projects/${this.config.projectId}/services/${apiDetails.managedService}`
+            );
+            
+            if (serviceStatus.state !== 'ENABLED') {
+              console.log('Managed service is not enabled. Enabling now...');
+              this.onProgress('Enabling API Gateway managed service...', 96);
+              
+              await this.gcpApiCall(
+                `https://serviceusage.googleapis.com/v1/projects/${this.config.projectId}/services/${apiDetails.managedService}:enable`,
+                { method: 'POST' }
+              );
+              
+              console.log('Waiting 30 seconds for managed service to propagate...');
+              this.onProgress('Waiting for managed service to activate...', 97);
+              await new Promise(resolve => setTimeout(resolve, 30000));
+            } else {
+              console.log('Managed service is already enabled');
+            }
+          } catch (err: any) {
+            if (err.message.includes('403') || err.message.includes('404')) {
+              // Service might not exist or we can't check, try to enable anyway
+              console.log('Could not check service status, attempting to enable...');
+              try {
+                await this.gcpApiCall(
+                  `https://serviceusage.googleapis.com/v1/projects/${this.config.projectId}/services/${apiDetails.managedService}:enable`,
+                  { method: 'POST' }
+                );
+                console.log('Waiting 30 seconds for managed service to propagate...');
+                await new Promise(resolve => setTimeout(resolve, 30000));
+              } catch (enableErr: any) {
+                console.warn('Failed to enable managed service:', enableErr.message);
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Could not check API details during retry:', err);
+      }
     }
     
     // First, get the managed service name from the API Gateway API
