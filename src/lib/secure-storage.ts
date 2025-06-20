@@ -15,12 +15,14 @@ class SimpleEncryption {
         text.charCodeAt(i) ^ this.key.charCodeAt(i % this.key.length)
       );
     }
-    return btoa(result); // Base64 encode
+    // Use Unicode-safe base64 encoding
+    return btoa(unescape(encodeURIComponent(result)));
   }
 
   static decrypt(encryptedText: string): string {
     try {
-      const text = atob(encryptedText); // Base64 decode
+      // Use Unicode-safe base64 decoding
+      const text = decodeURIComponent(escape(atob(encryptedText)));
       let result = '';
       for (let i = 0; i < text.length; i++) {
         result += String.fromCharCode(
