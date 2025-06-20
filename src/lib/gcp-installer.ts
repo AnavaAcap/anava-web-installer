@@ -522,30 +522,34 @@ Note: You can set budget alerts to control costs.`);
       } else {
         // For ANY other billing-related error, treat as a hard stop
         // This includes 403, SERVICE_DISABLED, permission errors, etc.
-        throw new Error(`❌ BILLING SETUP REQUIRED
+        
+        // Create a prerequisites-style error that will show in the special UI
+        const billingSteps = [
+          {
+            name: "Enable Billing",
+            description: "Set up billing on your Google Cloud project",
+            action: `Open billing settings: https://console.cloud.google.com/billing/linkedaccount?project=${projectId}`,
+            steps: [
+              "Click 'Link a billing account' or 'Enable billing'",
+              "Select or create a billing account",
+              "Confirm billing is enabled"
+            ]
+          },
+          {
+            name: "Enable Cloud Billing API", 
+            description: "Enable the Cloud Billing API to verify billing status",
+            action: `Open API console: https://console.cloud.google.com/apis/api/cloudbilling.googleapis.com/overview?project=${projectId}`,
+            steps: [
+              "Click the 'Enable' button",
+              "Wait for API to be enabled (may take a few minutes)"
+            ]
+          }
+        ];
 
-Cannot verify or access billing for project "${projectId}".
-
-This is a CRITICAL requirement - the installer cannot proceed without billing enabled.
-
-Required actions:
-1. Enable billing on this project: 
-   https://console.cloud.google.com/billing/linkedaccount?project=${projectId}
-
-2. Enable Cloud Billing API:
-   https://console.cloud.google.com/apis/api/cloudbilling.googleapis.com/overview?project=${projectId}
-
-3. Ensure your account has billing permissions on this project
-
-Why this is required:
-• Cloud Functions deployment requires billing
-• API Gateway requires billing  
-• Vertex AI requires billing
-• Most GCP services beyond free tier require billing
-
-Original error: ${err.message}
-
-After setting up billing, please try the installer again.`);
+        // Encode steps as base64 to prevent XSS while preserving URLs
+        const encodedSteps = Buffer.from(JSON.stringify(billingSteps)).toString('base64');
+        
+        throw new Error(`PREREQUISITES_MISSING:${encodedSteps}`);
       }
     }
     
