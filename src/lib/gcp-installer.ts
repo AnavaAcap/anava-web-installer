@@ -433,6 +433,19 @@ Note: You can set budget alerts to control costs.`);
 
   private async enableAPIs() {
     const apis = [
+      // APIs from the bash script that were missing
+      'identitytoolkit.googleapis.com',
+      'storage.googleapis.com', 
+      'firebasestorage.googleapis.com',
+      'aiplatform.googleapis.com',
+      'run.googleapis.com',
+      'cloudbuild.googleapis.com',
+      'artifactregistry.googleapis.com',
+      'logging.googleapis.com',
+      'pubsub.googleapis.com',
+      'compute.googleapis.com',
+      
+      // Existing APIs (keeping all original ones)
       'cloudbilling.googleapis.com',
       'cloudfunctions.googleapis.com',
       'firestore.googleapis.com',
@@ -443,7 +456,6 @@ Note: You can set budget alerts to control costs.`);
       'apigatewaymanagement.googleapis.com',
       'iamcredentials.googleapis.com',
       'sts.googleapis.com',
-      'storage-api.googleapis.com',
       'iam.googleapis.com',
       'cloudresourcemanager.googleapis.com',
       'serviceusage.googleapis.com',
@@ -584,16 +596,24 @@ Note: You can set budget alerts to control costs.`);
       addRoleBinding('roles/storage.objectAdmin', `serviceAccount:${serviceAccounts.vertex_ai_sa_email}`);
       addRoleBinding('roles/datastore.user', `serviceAccount:${serviceAccounts.vertex_ai_sa_email}`);
       addRoleBinding('roles/iam.workloadIdentityUser', `serviceAccount:${serviceAccounts.vertex_ai_sa_email}`);
+      addRoleBinding('roles/logging.logWriter', `serviceAccount:${serviceAccounts.vertex_ai_sa_email}`);
     }
 
     if (serviceAccounts.device_auth_sa_email) {
       addRoleBinding('roles/cloudfunctions.invoker', `serviceAccount:${serviceAccounts.device_auth_sa_email}`);
       addRoleBinding('roles/firebaseauth.admin', `serviceAccount:${serviceAccounts.device_auth_sa_email}`);
+      addRoleBinding('roles/logging.logWriter', `serviceAccount:${serviceAccounts.device_auth_sa_email}`);
+      addRoleBinding('roles/iam.serviceAccountTokenCreator', `serviceAccount:${serviceAccounts.device_auth_sa_email}`);
     }
 
     if (serviceAccounts.tvm_sa_email) {
       addRoleBinding('roles/cloudfunctions.invoker', `serviceAccount:${serviceAccounts.tvm_sa_email}`);
       addRoleBinding('roles/iam.serviceAccountTokenCreator', `serviceAccount:${serviceAccounts.tvm_sa_email}`);
+      addRoleBinding('roles/logging.logWriter', `serviceAccount:${serviceAccounts.tvm_sa_email}`);
+    }
+
+    if (serviceAccounts.apigw_invoker_sa_email) {
+      addRoleBinding('roles/logging.logWriter', `serviceAccount:${serviceAccounts.apigw_invoker_sa_email}`);
     }
 
     await this.gcpApiCall(
@@ -1186,6 +1206,29 @@ This manual step is required because Firestore needs you to choose security rule
         apiDetails = {
           managedService: `${apiId}-${Math.random().toString(36).substring(7)}.apigateway.${this.config.projectId}.cloud.goog`
         };
+      }
+    }
+
+    // CRITICAL: Enable the managed service that was created by the API Gateway
+    // This is the step that was missing and causing the "API is not enabled" error
+    if (apiDetails.managedService) {
+      console.log(`Enabling managed service: ${apiDetails.managedService}`);
+      try {
+        await this.gcpApiCall(
+          `https://serviceusage.googleapis.com/v1/projects/${this.config.projectId}/services/${apiDetails.managedService}:enable`,
+          { method: 'POST' }
+        );
+        console.log('✅ Managed service enabled successfully');
+        
+        // Wait for the service to fully propagate
+        console.log('Waiting 30 seconds for managed service to propagate...');
+        await new Promise(resolve => setTimeout(resolve, 30000));
+      } catch (err: any) {
+        console.error(`Failed to enable managed service ${apiDetails.managedService}:`, err.message);
+        // Continue anyway - it might already be enabled
+        if (!err.message.includes('already enabled')) {
+          console.warn('⚠️  Managed service enablement failed. You may need to enable it manually in the Console.');
+        }
       }
     }
     
