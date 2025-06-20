@@ -1291,8 +1291,11 @@ This manual step is required because Firestore needs you to choose security rule
       }
     }
 
-    // CRITICAL: Enable the managed service that was created by the API Gateway
-    // This is the step that was missing and causing the "API is not enabled" error
+    // Create OpenAPI spec using the managed service name
+    const openApiSpec = this.generateOpenAPISpec(apiDetails.managedService);
+    
+    // CRITICAL: Enable the managed service BEFORE creating API config
+    // This must happen before API config creation to avoid permission errors
     if (apiDetails.managedService) {
       console.log(`Enabling managed service: ${apiDetails.managedService}`);
       try {
@@ -1304,18 +1307,16 @@ This manual step is required because Firestore needs you to choose security rule
         
         // Wait for the service to fully propagate
         console.log('Waiting 30 seconds for managed service to propagate...');
+        this.onProgress('Enabling API Gateway managed service...', 82);
         await new Promise(resolve => setTimeout(resolve, 30000));
       } catch (err: any) {
         console.error(`Failed to enable managed service ${apiDetails.managedService}:`, err.message);
         // Continue anyway - it might already be enabled
         if (!err.message.includes('already enabled')) {
-          console.warn('⚠️  Managed service enablement failed. You may need to enable it manually in the Console.');
+          console.warn('⚠️  Managed service enablement failed. Continuing anyway...');
         }
       }
     }
-    
-    // Create OpenAPI spec using the managed service name
-    const openApiSpec = this.generateOpenAPISpec(apiDetails.managedService);
 
     // Create API Config (configs are also global)
     const configId = `${apiId}-config-${Date.now()}`;
@@ -1638,15 +1639,20 @@ paths:
     const keyDisplayName = `${this.config.solutionPrefix}-device-key`;
     const apiId = `${this.config.solutionPrefix}-device-api`;
     
-    // Wait longer for API Gateway to be fully ready (increased from 30s to 120s)
-    console.log('Waiting for API Gateway to be fully ready before creating API key...');
-    this.onProgress('Waiting for API Gateway to stabilize before creating API key...', 95);
-    
-    // Wait 2 minutes with progress updates every 10 seconds
-    for (let i = 0; i < 12; i++) {
-      await new Promise(resolve => setTimeout(resolve, 10000));
-      const secondsWaited = (i + 1) * 10;
-      this.onProgress(`Waiting for API Gateway... (${secondsWaited}s/120s)`, 95 + Math.floor((i / 12) * 2));
+    // Only wait for new installations, not retries
+    if (!forceRegenerate) {
+      // Wait longer for API Gateway to be fully ready (increased from 30s to 120s)
+      console.log('Waiting for API Gateway to be fully ready before creating API key...');
+      this.onProgress('Waiting for API Gateway to stabilize before creating API key...', 95);
+      
+      // Wait 2 minutes with progress updates every 10 seconds
+      for (let i = 0; i < 12; i++) {
+        await new Promise(resolve => setTimeout(resolve, 10000));
+        const secondsWaited = (i + 1) * 10;
+        this.onProgress(`Waiting for API Gateway... (${secondsWaited}s/120s)`, 95 + Math.floor((i / 12) * 2));
+      }
+    } else {
+      console.log('Skipping wait time for API key retry...');
     }
     
     // First, get the managed service name from the API Gateway API

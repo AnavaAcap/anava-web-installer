@@ -347,13 +347,13 @@ function InstallerApp() {
           <VStack align="start" spacing={1}>
             <HStack align="baseline">
               <Heading size="xl">Anava Cloud Installer</Heading>
-              <Badge colorScheme="green" ml={2}>v2.1.7-RESUME-FIX</Badge>
+              <Badge colorScheme="green" ml={2}>v2.1.8-MANAGED-SVC</Badge>
             </HStack>
             <Text color="gray.500">
               Guided installation for Anava IoT Security Platform on Google Cloud
             </Text>
             <Text fontSize="xs" color="gray.400">
-              NOTE: v2.1.7 - Fixed Firebase key on resume & better API Gateway timeout handling</Text>
+              NOTE: v2.1.8 - Enable managed service before API config creation (fixes permission error)</Text>
           </VStack>
           <IconButton
             aria-label="Toggle color mode"
