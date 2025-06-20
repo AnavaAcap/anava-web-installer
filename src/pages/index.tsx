@@ -351,13 +351,13 @@ function InstallerApp() {
           <VStack align="start" spacing={1}>
             <HStack align="baseline">
               <Heading size="xl">Anava Cloud Installer</Heading>
-              <Badge colorScheme="green" ml={2}>v2.3.3-UNICODE-FIX</Badge>
+              <Badge colorScheme="green" ml={2}>v2.3.4-PERSISTENT</Badge>
             </HStack>
             <Text color="gray.500">
               Guided installation for Anava IoT Security Platform on Google Cloud
             </Text>
             <Text fontSize="xs" color="gray.400">
-              NOTE: v2.3.3 - Fix Unicode encoding issue in installation state storage</Text>
+              NOTE: v2.3.4 - Persistent API key creation - just keep trying until it works (25 min timeout)</Text>
           </VStack>
           <IconButton
             aria-label="Toggle color mode"

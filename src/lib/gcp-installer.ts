@@ -1859,8 +1859,10 @@ paths:
             `https://apikeys.googleapis.com/v2/${existingKey.name}`,
             { method: 'DELETE' }
           );
-          // Wait for deletion to propagate
-          await new Promise(resolve => setTimeout(resolve, 5000));
+          // Wait longer for deletion to propagate (matching bash script approach)
+          console.log('Waiting 30 seconds for API key deletion to propagate...');
+          this.onProgress('Waiting for old API key deletion to complete...', 97);
+          await new Promise(resolve => setTimeout(resolve, 30000));
         } catch (err) {
           console.error('Failed to delete existing key, proceeding anyway:', err);
         }
@@ -1869,33 +1871,81 @@ paths:
       console.log('Error checking existing keys:', err);
     }
     
-    try {
-      // Prepare the key creation request
-      const keyRequest: any = {
-        displayName: keyDisplayName
-      };
-      
-      // Add restriction if we have the managed service name
-      if (managedServiceName) {
-        console.log('Creating restricted API key for service:', managedServiceName);
-        keyRequest.restrictions = {
-          apiTargets: [{
-            service: managedServiceName
-          }]
+    // Implement fallback strategy: try restricted first, then unrestricted
+    let response: any = null;
+    let keyCreationError: any = null;
+    
+    // First attempt: Try with restrictions if we have managed service name
+    if (managedServiceName) {
+      try {
+        console.log('Attempting to create restricted API key for service:', managedServiceName);
+        this.onProgress('Creating restricted API key...', 98);
+        
+        const restrictedKeyRequest = {
+          displayName: keyDisplayName,
+          restrictions: {
+            apiTargets: [{
+              service: managedServiceName
+            }]
+          }
         };
-      } else {
-        console.log('Creating unrestricted API key (fallback)');
-      }
-      
-      // Create new key
-      const response = await this.gcpApiCall(
-        `https://apikeys.googleapis.com/v2/projects/${this.config.projectId}/locations/global/keys`,
-        {
-          method: 'POST',
-          body: JSON.stringify(keyRequest)
+        
+        response = await this.gcpApiCall(
+          `https://apikeys.googleapis.com/v2/projects/${this.config.projectId}/locations/global/keys`,
+          {
+            method: 'POST',
+            body: JSON.stringify(restrictedKeyRequest)
+          },
+          10, // More retries
+          900000 // 15 minute timeout - just keep trying
+        );
+        
+        console.log('Successfully initiated restricted API key creation');
+      } catch (err: any) {
+        console.error('Failed to create restricted API key:', err.message);
+        keyCreationError = err;
+        
+        // Check if error is due to service not being enabled
+        if (err.message.includes('service') || err.message.includes('403') || err.message.includes('PERMISSION_DENIED')) {
+          console.log('Managed service might not be properly enabled. Will try unrestricted key as fallback.');
         }
-      );
-
+      }
+    }
+    
+    // Second attempt: Try unrestricted key if restricted failed or no managed service name
+    if (!response) {
+      try {
+        console.log('Creating unrestricted API key (fallback)...');
+        this.onProgress('Creating unrestricted API key (fallback)...', 98);
+        
+        const unrestrictedKeyRequest = {
+          displayName: keyDisplayName
+        };
+        
+        response = await this.gcpApiCall(
+          `https://apikeys.googleapis.com/v2/projects/${this.config.projectId}/locations/global/keys`,
+          {
+            method: 'POST',
+            body: JSON.stringify(unrestrictedKeyRequest)
+          },
+          10, // More retries  
+          900000 // 15 minute timeout - just keep trying
+        );
+        
+        console.log('Successfully initiated unrestricted API key creation');
+        
+        if (managedServiceName && keyCreationError) {
+          console.warn('⚠️  Created unrestricted API key as fallback. Restricted key creation failed.');
+          console.warn('⚠️  For better security, manually restrict the key to:', managedServiceName);
+        }
+      } catch (err: any) {
+        console.error('Failed to create unrestricted API key:', err.message);
+        throw new Error(`API key creation failed completely. Original error: ${keyCreationError?.message || 'N/A'}. Fallback error: ${err.message}`);
+      }
+    }
+    
+    // Now we have a response (either restricted or unrestricted), process it
+    try {
       // Wait for the operation to complete
       if (response.name && response.name.includes('/operations/')) {
         console.log('Waiting for API key creation operation...');
@@ -1903,7 +1953,7 @@ paths:
         
         // Poll the operation status
         let pollAttempts = 0;
-        const maxPollAttempts = 30; // Try for up to 5 minutes
+        const maxPollAttempts = 300; // Try for up to 25 minutes - just keep going until it works
         let delay = 2000; // Start with 2 second delay
         
         while (pollAttempts < maxPollAttempts) {
@@ -1922,8 +1972,8 @@ paths:
             const operationStatus = await this.gcpApiCall(
               `https://apikeys.googleapis.com/v2/${response.name}`,
               {}, // default GET
-              3, // retries
-              30000 // 30 second timeout
+              5, // more retries
+              120000 // 2 minute timeout per poll
             );
             
             console.log('Operation status:', operationStatus.done ? 'DONE' : 'IN_PROGRESS');
