@@ -58,7 +58,7 @@ function InstallerApp() {
   const [projects, setProjects] = useState<GoogleProject[]>([]);
   const [selectedProject, setSelectedProject] = useState('');
   const [region, setRegion] = useState('us-central1');
-  const [solutionPrefix, setSolutionPrefix] = useState('anava');
+  const solutionPrefix = 'anava'; // Always use 'anava' as the prefix
   const [installResult, setInstallResult] = useState<InstallResult | null>(null);
   const [error, setError] = useState('');
   const [isRetryingApiKey, setIsRetryingApiKey] = useState(false);
@@ -406,18 +406,6 @@ function InstallerApp() {
                   </option>
                 ))}
               </Select>
-            </FormControl>
-
-            <FormControl>
-              <FormLabel>Solution Prefix</FormLabel>
-              <Input
-                value={solutionPrefix}
-                onChange={(e) => setSolutionPrefix(e.target.value)}
-                placeholder="anava"
-              />
-              <Text fontSize="sm" color="gray.500" mt={1}>
-                Used to prefix all created resources
-              </Text>
             </FormControl>
 
             {hasIncompleteInstall && selectedProject === resumeProjectId && (

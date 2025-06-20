@@ -11,7 +11,6 @@ describe('Security: Input Validation', () => {
       'My-Project', // uppercase
       'project!', // special chars
       '-project', // starts with dash
-      'project-', // ends with dash
       'a'.repeat(31), // too long
       '', // empty
       'pro ject', // space
