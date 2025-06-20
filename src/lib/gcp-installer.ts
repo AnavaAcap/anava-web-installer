@@ -124,6 +124,10 @@ export class AnavaGCPInstaller {
           if (step.name === 'Creating service accounts' && savedResources.serviceAccount) {
             results.serviceAccountEmail = savedResources.serviceAccount.email;
           }
+          if (step.name === 'Setting up Firebase' && savedResources.firebaseApp) {
+            results.firebaseEnabled = true;
+            results.firebaseWebApiKey = savedResources.firebaseApp.appId; // Note: appId field stores the web API key
+          }
           if (step.name === 'Creating API Gateway' && savedResources.apiGateway?.url) {
             results.apiGatewayUrl = savedResources.apiGateway.url;
           }
@@ -1838,6 +1842,29 @@ paths:
       if (keyString) {
         console.log('✅ API key created successfully');
         return { apiKey: keyString, apiKeyId: response.name };
+      }
+      
+      // If we get here, the operation is taking too long
+      // Check if this is due to API Gateway not being ready
+      if (managedServiceName) {
+        console.warn('API key creation timed out. This often happens when API Gateway is still initializing.');
+        console.warn('The API Gateway managed service may need to be manually enabled.');
+        
+        return { 
+          apiKey: null,
+          apiKeyError: `API key creation timed out. This usually means the API Gateway is still initializing.
+          
+Options:
+1. Wait 5-10 minutes for API Gateway to fully initialize, then click Retry
+2. Manually enable the managed service in Cloud Console:
+   - Go to: https://console.cloud.google.com/apis/library?project=${this.config.projectId}
+   - Search for: ${managedServiceName}
+   - Click Enable if found
+3. Create the API key manually:
+   - Go to: https://console.cloud.google.com/apis/credentials?project=${this.config.projectId}
+   - Click "+ CREATE CREDENTIALS" → "API Key"
+   - Restrict the key to: ${managedServiceName}`
+        };
       }
       
       throw new Error('API key creation is taking longer than expected (>5 minutes). The key may still be creating in the background. Please wait a few more minutes and try again, or create the key manually in the Google Cloud Console.');
