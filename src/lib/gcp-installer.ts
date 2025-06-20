@@ -1367,7 +1367,7 @@ This manual step is required because Firestore needs you to choose security rule
                 files: [
                   {
                     filePath: 'openapi.yaml',
-                    fileContents: Buffer.from(openApiSpec).toString('base64'),
+                    fileContents: btoa(openApiSpec),
                     fileType: 'OPEN_API_YAML'
                   }
                 ]
@@ -1820,11 +1820,19 @@ paths:
                 const openApiSpec = this.generateOpenAPISpec(apiDetails.managedService);
                 
                 await this.gcpApiCall(
-                  `https://servicemanagement.googleapis.com/v1/services/${apiDetails.managedService}/configs`,
+                  `https://servicemanagement.googleapis.com/v1/services/${apiDetails.managedService}/configs:submit`,
                   {
                     method: 'POST',
                     body: JSON.stringify({
-                      openapi: openApiSpec
+                      configSource: {
+                        files: [
+                          {
+                            filePath: 'openapi.yaml',
+                            fileContents: btoa(openApiSpec),
+                            fileType: 'OPEN_API_YAML'
+                          }
+                        ]
+                      }
                     })
                   }
                 );
