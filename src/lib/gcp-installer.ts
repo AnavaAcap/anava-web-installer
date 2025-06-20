@@ -247,6 +247,9 @@ export class AnavaGCPInstaller {
       firebaseEnabled: false,
       storageEnabled: false,
       firestoreEnabled: false,
+      authConfigured: false,
+      emailPasswordEnabled: false,
+      hasAuthUsers: false,
       requiredAPIs: [] as string[],
     };
     
@@ -282,8 +285,45 @@ export class AnavaGCPInstaller {
       console.log('Firestore database not found');
     }
     
-    // If Firebase, Storage, or Firestore are missing, throw detailed error
-    if (!prerequisites.firebaseEnabled || !prerequisites.storageEnabled || !prerequisites.firestoreEnabled) {
+    // Check Firebase Authentication configuration
+    if (prerequisites.firebaseEnabled) {
+      try {
+        // Check if Firebase Auth is configured
+        const authConfig = await this.gcpApiCall(
+          `https://identitytoolkit.googleapis.com/v2/projects/${this.config.projectId}/config`
+        );
+        prerequisites.authConfigured = true;
+        
+        // Check if email/password sign-in is enabled
+        if (authConfig.signIn?.email?.enabled === true) {
+          prerequisites.emailPasswordEnabled = true;
+        }
+        
+        // Check if there are any users (we need at least one for testing)
+        try {
+          const users = await this.gcpApiCall(
+            `https://identitytoolkit.googleapis.com/v1/projects/${this.config.projectId}/accounts:lookup`,
+            {
+              method: 'POST',
+              body: JSON.stringify({
+                maxResults: 1
+              })
+            }
+          );
+          if (users.users && users.users.length > 0) {
+            prerequisites.hasAuthUsers = true;
+          }
+        } catch (err) {
+          console.log('No Firebase Auth users found');
+        }
+      } catch (err: any) {
+        console.log('Firebase Auth not configured:', err.message);
+      }
+    }
+    
+    // If Firebase, Storage, Firestore, or Auth are missing, throw detailed error
+    if (!prerequisites.firebaseEnabled || !prerequisites.storageEnabled || !prerequisites.firestoreEnabled || 
+        !prerequisites.authConfigured || !prerequisites.emailPasswordEnabled || !prerequisites.hasAuthUsers) {
       const missingSteps = [];
       
       if (!prerequisites.firebaseEnabled) {
@@ -307,6 +347,42 @@ export class AnavaGCPInstaller {
           name: 'Create Firestore Database',
           description: 'Firestore database must be created manually to choose region and security rules. IMPORTANT: Leave database name as "(default)" - do not change it! For security, choose "Production mode" rules.',
           action: `Open Firestore Console: https://console.firebase.google.com/project/${this.config.projectId}/firestore and click "Create database". Keep database name as "(default)"`,
+        });
+      }
+      
+      if (prerequisites.firebaseEnabled && !prerequisites.authConfigured) {
+        missingSteps.push({
+          name: 'Initialize Firebase Authentication',
+          description: 'Firebase Authentication must be initialized to enable user authentication',
+          action: `Open Firebase Auth: https://console.firebase.google.com/project/${this.config.projectId}/authentication and click "Get started"`,
+        });
+      }
+      
+      if (prerequisites.authConfigured && !prerequisites.emailPasswordEnabled) {
+        missingSteps.push({
+          name: 'Enable Email/Password Sign-in',
+          description: 'Email/Password authentication must be enabled for device authentication to work',
+          action: `Go to Firebase Auth Settings: https://console.firebase.google.com/project/${this.config.projectId}/authentication/providers and enable "Email/Password" sign-in method`,
+          steps: [
+            '1. Click on "Email/Password" in the providers list',
+            '2. Toggle "Enable" switch to ON',
+            '3. Click "Save"'
+          ],
+        });
+      }
+      
+      if (prerequisites.emailPasswordEnabled && !prerequisites.hasAuthUsers) {
+        missingSteps.push({
+          name: 'Create a Test User',
+          description: 'At least one Firebase Auth user is required for testing the authentication flow',
+          action: `Go to Firebase Auth Users: https://console.firebase.google.com/project/${this.config.projectId}/authentication/users and add a test user`,
+          steps: [
+            '1. Click "Add user" button',
+            '2. Enter a test email (e.g., test@example.com)',
+            '3. Enter a secure password',
+            '4. Click "Add user"',
+            '5. Save these credentials for testing the device authentication flow'
+          ],
         });
       }
       

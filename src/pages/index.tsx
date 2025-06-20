@@ -812,6 +812,15 @@ export GCP_PROJECT_ID="${installResult.projectId}"`}
                                     </>
                                   ) : step.action}
                                 </Link>
+                                {step.steps && step.steps.length > 0 && (
+                                  <VStack align="start" spacing={1} mt={2} pl={4}>
+                                    {step.steps.map((substep: string, subIndex: number) => (
+                                      <Text key={subIndex} fontSize="sm" color="gray.700">
+                                        {substep}
+                                      </Text>
+                                    ))}
+                                  </VStack>
+                                )}
                               </VStack>
                             </HStack>
                           </Box>
