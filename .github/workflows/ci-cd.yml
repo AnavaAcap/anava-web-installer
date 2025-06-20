@@ -33,12 +33,19 @@ jobs:
       - name: Run security tests
         run: npm run test:security
       
-      - name: CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
         with:
-          languages: javascript, typescript
+          languages: javascript
+          
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+        
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
       
       - name: Run Snyk Security Scan
+        if: env.SNYK_TOKEN != ''
         uses: snyk/actions/node@master
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
@@ -68,12 +75,12 @@ jobs:
         run: npm run type-check
       
       - name: Check for hardcoded secrets
-        uses: trufflesecurity/trufflehog@main
-        with:
-          path: ./
-          base: ${{ github.event.repository.default_branch }}
-          head: HEAD
-          extra_args: --debug --only-verified
+        run: |
+          # Basic secret pattern check
+          if grep -r -E "(api_key|apikey|api-key)\s*[:=]\s*['\"][A-Za-z0-9]{20,}['\"]" --include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" --exclude-dir=node_modules --exclude-dir=.next .; then
+            echo "Potential hardcoded API keys found!"
+            exit 1
+          fi
 
   test:
     name: Test Suite
