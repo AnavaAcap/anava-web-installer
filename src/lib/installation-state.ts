@@ -38,6 +38,8 @@ export interface SavedInstallationState {
   installResult?: any;
 }
 
+import { SecureStorage, sanitizeForStorage } from './secure-storage';
+
 const STORAGE_KEY = 'anava-installation-state';
 
 export class InstallationStateManager {
@@ -47,7 +49,12 @@ export class InstallationStateManager {
         ...state,
         lastUpdated: new Date().toISOString()
       };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(stateWithTimestamp));
+      
+      // Sanitize sensitive data before storage
+      const sanitizedState = sanitizeForStorage(stateWithTimestamp);
+      
+      // Store securely with encryption
+      SecureStorage.setItem(STORAGE_KEY, sanitizedState);
     } catch (error) {
       console.error('Failed to save installation state:', error);
     }
@@ -55,10 +62,8 @@ export class InstallationStateManager {
 
   static load(projectId: string): SavedInstallationState | null {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (!saved) return null;
-
-      const state = JSON.parse(saved) as SavedInstallationState;
+      const state = SecureStorage.getItem<SavedInstallationState>(STORAGE_KEY);
+      if (!state) return null;
       
       // Check if this is for the same project
       if (state.projectId !== projectId) return null;
@@ -103,7 +108,7 @@ export class InstallationStateManager {
 
   static clear(): void {
     try {
-      localStorage.removeItem(STORAGE_KEY);
+      SecureStorage.removeItem(STORAGE_KEY);
     } catch (error) {
       console.error('Failed to clear installation state:', error);
     }
