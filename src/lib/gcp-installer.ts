@@ -1294,11 +1294,33 @@ This manual step is required because Firestore needs you to choose security rule
     // Create OpenAPI spec using the managed service name
     const openApiSpec = this.generateOpenAPISpec(apiDetails.managedService);
     
-    // CRITICAL: Enable the managed service BEFORE creating API config
-    // This must happen before API config creation to avoid permission errors
+    // CRITICAL: Deploy the service configuration first (like gcloud endpoints services deploy)
+    // This creates the managed service that can then be enabled
     if (apiDetails.managedService) {
-      console.log(`Enabling managed service: ${apiDetails.managedService}`);
+      console.log(`Deploying service configuration for: ${apiDetails.managedService}`);
+      this.onProgress('Deploying API Gateway service configuration...', 81);
+      
       try {
+        // Use Service Management API to deploy the OpenAPI spec
+        // This is equivalent to: gcloud endpoints services deploy openapi.yaml
+        const configResponse = await this.gcpApiCall(
+          `https://servicemanagement.googleapis.com/v1/services/${apiDetails.managedService}/configs`,
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              openapi: openApiSpec
+            })
+          }
+        );
+        
+        console.log('✅ Service configuration deployed successfully');
+        console.log('Waiting 30 seconds for service configuration to propagate...');
+        await new Promise(resolve => setTimeout(resolve, 30000));
+        
+        // Now enable the managed service
+        console.log(`Enabling managed service: ${apiDetails.managedService}`);
+        this.onProgress('Enabling API Gateway managed service...', 82);
+        
         await this.gcpApiCall(
           `https://serviceusage.googleapis.com/v1/projects/${this.config.projectId}/services/${apiDetails.managedService}:enable`,
           { method: 'POST' }
@@ -1307,14 +1329,12 @@ This manual step is required because Firestore needs you to choose security rule
         
         // Wait for the service to fully propagate
         console.log('Waiting 30 seconds for managed service to propagate...');
-        this.onProgress('Enabling API Gateway managed service...', 82);
         await new Promise(resolve => setTimeout(resolve, 30000));
+        
       } catch (err: any) {
-        console.error(`Failed to enable managed service ${apiDetails.managedService}:`, err.message);
-        // Continue anyway - it might already be enabled
-        if (!err.message.includes('already enabled')) {
-          console.warn('⚠️  Managed service enablement failed. Continuing anyway...');
-        }
+        console.error(`Failed to deploy/enable managed service ${apiDetails.managedService}:`, err.message);
+        // Continue anyway - the service might already exist
+        console.warn('⚠️  Service deployment failed. This might mean it already exists. Continuing...');
       }
     }
 
