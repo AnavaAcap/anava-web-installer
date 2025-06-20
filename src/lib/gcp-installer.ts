@@ -1666,51 +1666,94 @@ paths:
       // Wait for the operation to complete
       if (response.name && response.name.includes('/operations/')) {
         console.log('Waiting for API key creation operation...');
+        console.log('Operation name:', response.name);
         
-        // Poll for the key to be created
+        // Poll the operation status
         let pollAttempts = 0;
-        const maxPollAttempts = 30; // Try for up to 5 minutes (increased from 60 seconds)
+        const maxPollAttempts = 30; // Try for up to 5 minutes
+        let delay = 2000; // Start with 2 second delay
         
         while (pollAttempts < maxPollAttempts) {
-          await new Promise(resolve => setTimeout(resolve, 10000));
+          await new Promise(resolve => setTimeout(resolve, delay));
           pollAttempts++;
           
-          const minutesWaited = Math.floor((pollAttempts * 10) / 60);
-          const secondsWaited = (pollAttempts * 10) % 60;
+          const minutesWaited = Math.floor((pollAttempts * delay / 1000) / 60);
+          const secondsWaited = Math.floor((pollAttempts * delay / 1000) % 60);
           const timeStr = minutesWaited > 0 ? `${minutesWaited}m ${secondsWaited}s` : `${secondsWaited}s`;
           
-          console.log(`Checking for API key... (attempt ${pollAttempts}/${maxPollAttempts}, waited ${timeStr})`);
-          this.onProgress(`Creating API key... (checking ${timeStr})`, 98);
+          console.log(`Checking operation status... (attempt ${pollAttempts}/${maxPollAttempts}, waited ${timeStr})`);
+          this.onProgress(`Creating API key... (${timeStr})`, 98);
           
           try {
-            // List keys again to find our new key
-            const keys = await this.gcpApiCall(
-              `https://apikeys.googleapis.com/v2/projects/${this.config.projectId}/locations/global/keys`,
+            // Check the operation status
+            const operationStatus = await this.gcpApiCall(
+              `https://apikeys.googleapis.com/v2/${response.name}`,
               {}, // default GET
               3, // retries
-              30000 // 30 second timeout for listing keys
+              30000 // 30 second timeout
             );
             
-            const newKey = keys.keys?.find((key: any) => 
-              key.displayName === keyDisplayName
-            );
+            console.log('Operation status:', operationStatus.done ? 'DONE' : 'IN_PROGRESS');
             
-            if (newKey) {
-              const keyDetails = await this.gcpApiCall(
-                `https://apikeys.googleapis.com/v2/${newKey.name}/keyString`,
-                {}, // default GET
-                3, // retries
-                30000 // 30 second timeout
-              );
-              if (keyDetails.keyString) {
+            if (operationStatus.done) {
+              // Check for errors
+              if (operationStatus.error) {
+                console.error('API key creation failed:', operationStatus.error);
+                throw new Error(`API key creation failed: ${JSON.stringify(operationStatus.error)}`);
+              }
+              
+              // Extract the key from the operation response
+              // The keyString is in the response field when operation completes
+              if (operationStatus.response?.keyString) {
                 console.log('✅ API key created successfully');
                 this.onProgress('API key created successfully!', 100);
-                return { apiKey: keyDetails.keyString, apiKeyId: newKey.name };
+                return { 
+                  apiKey: operationStatus.response.keyString,
+                  apiKeyId: operationStatus.response.name || response.name
+                };
+              } else if (operationStatus.response?.current?.keyString) {
+                // Sometimes the key is in response.current.keyString
+                console.log('✅ API key created successfully');
+                this.onProgress('API key created successfully!', 100);
+                return { 
+                  apiKey: operationStatus.response.current.keyString,
+                  apiKeyId: operationStatus.response.name || response.name
+                };
+              } else {
+                // If no keyString in response, try to get it from the key resource
+                if (operationStatus.response?.name) {
+                  console.log('Getting key string from key resource...');
+                  const keyDetails = await this.gcpApiCall(
+                    `https://apikeys.googleapis.com/v2/${operationStatus.response.name}/keyString`,
+                    {}, // default GET
+                    3, // retries
+                    30000 // 30 second timeout
+                  );
+                  if (keyDetails.keyString) {
+                    console.log('✅ API key created successfully');
+                    this.onProgress('API key created successfully!', 100);
+                    return { 
+                      apiKey: keyDetails.keyString,
+                      apiKeyId: operationStatus.response.name
+                    };
+                  }
+                }
               }
+              
+              // If we still don't have the key, log the full response for debugging
+              console.error('Operation completed but no keyString found. Full response:', JSON.stringify(operationStatus, null, 2));
+              throw new Error('API key creation completed but keyString not found in response');
             }
-          } catch (err) {
-            console.log(`Error checking for key: ${err}. Will retry...`);
+          } catch (err: any) {
+            console.log(`Error checking operation status: ${err.message}`);
+            if (err.message.includes('API key creation failed') || err.message.includes('keyString not found')) {
+              throw err; // Re-throw critical errors
+            }
+            // Continue polling for other errors
           }
+          
+          // Exponential backoff with max 10 seconds
+          delay = Math.min(delay * 1.5, 10000);
         }
       }
       
