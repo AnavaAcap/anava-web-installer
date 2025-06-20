@@ -11,7 +11,9 @@ const nextConfig = {
   env: {
     // These will be replaced at build time
     NEXT_PUBLIC_GOOGLE_CLIENT_ID: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '',
-    NEXT_PUBLIC_APP_VERSION: process.env.npm_package_version || '2.1.0'
+    NEXT_PUBLIC_APP_VERSION: process.env.npm_package_version || require('./package.json').version,
+    NEXT_PUBLIC_BUILD_TIME: new Date().toISOString(),
+    NEXT_PUBLIC_GIT_SHA: process.env.VERCEL_GIT_COMMIT_SHA || process.env.GITHUB_SHA || 'unknown'
   },
 
   // Webpack configuration for additional security

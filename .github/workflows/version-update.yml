@@ -1,0 +1,162 @@
+name: Version Update
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_type:
+        description: 'Version type to bump'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+        - patch
+        - minor
+        - major
+      descriptor:
+        description: 'Version descriptor (e.g., ENHANCED, SECURITY, FEATURE)'
+        required: false
+        default: 'RELEASE'
+        type: string
+      
+  # Automatic patch version on successful main branch deployment
+  workflow_run:
+    workflows: ["CI/CD Pipeline"]
+    branches: [main]
+    types: [completed]
+
+jobs:
+  auto-patch:
+    name: Auto Patch Version
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          
+      - name: Configure Git
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          
+      - name: Update patch version
+        run: |
+          npm run version:patch
+          
+      - name: Commit version update
+        run: |
+          git add package.json src/pages/index.tsx CLAUDE.md
+          git commit -m "chore: auto-bump version to $(node -p "require('./package.json').version")-PATCH
+
+          🤖 Automated version bump after successful deployment"
+          git push
+        continue-on-error: true
+
+  manual-update:
+    name: Manual Version Update
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          
+      - name: Configure Git
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          
+      - name: Update version
+        run: |
+          if [ "${{ github.event.inputs.version_type }}" = "patch" ]; then
+            npm run version:patch
+          elif [ "${{ github.event.inputs.version_type }}" = "minor" ]; then
+            npm run version:minor
+          elif [ "${{ github.event.inputs.version_type }}" = "major" ]; then
+            npm run version:major
+          fi
+          
+          # Override descriptor if provided
+          if [ -n "${{ github.event.inputs.descriptor }}" ]; then
+            node scripts/update-version.js $(node -p "require('./package.json').version") "${{ github.event.inputs.descriptor }}"
+          fi
+          
+      - name: Commit version update
+        run: |
+          NEW_VERSION=$(node -p "require('./package.json').version")
+          DESCRIPTOR="${{ github.event.inputs.descriptor || 'RELEASE' }}"
+          
+          git add package.json src/pages/index.tsx CLAUDE.md
+          git commit -m "chore: bump version to v${NEW_VERSION}-${DESCRIPTOR}
+
+          Manual version update via workflow dispatch.
+          Type: ${{ github.event.inputs.version_type }}
+          Descriptor: ${DESCRIPTOR}
+
+          🤖 Generated via GitHub Actions"
+          git push
+
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: [manual-update]
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.version_type != 'patch'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          
+      - name: Get version info
+        id: version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          DESCRIPTOR="${{ github.event.inputs.descriptor || 'RELEASE' }}"
+          echo "version=v${VERSION}-${DESCRIPTOR}" >> $GITHUB_OUTPUT
+          echo "version_number=${VERSION}" >> $GITHUB_OUTPUT
+          
+      - name: Create Release
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const { version, version_number } = process.env;
+            
+            const release = await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: `v${version_number}`,
+              name: `${version}`,
+              body: `## Release ${version}
+
+            ### Changes
+            - Version bump: ${{ github.event.inputs.version_type }}
+            - Descriptor: ${{ github.event.inputs.descriptor || 'RELEASE' }}
+
+            ### Deployment
+            - Production: https://installer.anava.ai
+            - Staging: https://dev.anava.ai
+
+            ### Features
+            - Smart resume capability for interrupted installations
+            - Comprehensive security hardening
+            - Automated CI/CD pipeline
+            - 62+ test coverage
+
+            🤖 Generated via GitHub Actions`,
+              draft: false,
+              prerelease: false
+            });
+            
+            console.log(\`Created release: \${release.data.html_url}\`);
+        env:
+          version: ${{ steps.version.outputs.version }}
+          version_number: ${{ steps.version.outputs.version_number }}

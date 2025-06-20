@@ -313,14 +313,13 @@ function InstallerApp() {
           <VStack align="start" spacing={1}>
             <HStack align="baseline">
               <Heading size="xl">Anava Cloud Installer</Heading>
-              <Badge colorScheme="green" ml={2}>v2.1.0-RESILIENT</Badge>
+              <Badge colorScheme="green" ml={2}>v2.1.1-IRONCLAD</Badge>
             </HStack>
             <Text color="gray.500">
               Guided installation for Anava IoT Security Platform on Google Cloud
             </Text>
             <Text fontSize="xs" color="gray.400">
-              NOTE: v2.1 - Extended timeouts (10min) for API Gateway, real-time progress updates
-            </Text>
+              NOTE: v2.1.1-IRONCLAD - Latest version with smart resume and comprehensive security</Text>
           </VStack>
           <IconButton
             aria-label="Toggle color mode"

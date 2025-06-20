@@ -1,6 +1,6 @@
 {
   "name": "anava-cloud-installer",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "One-click installer for Anava IoT Security Platform on Google Cloud",
   "private": true,
   "scripts": {
@@ -14,7 +14,11 @@
     "test:integration": "jest --config jest.integration.config.js",
     "test:security": "jest --testPathPattern=security",
     "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json,md}\"",
-    "format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,json,md}\""
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,json,md}\"",
+    "version:update": "node scripts/update-version.js",
+    "version:patch": "npm version patch --no-git-tag-version && node scripts/update-version.js $(node -p \"require('./package.json').version\") PATCH",
+    "version:minor": "npm version minor --no-git-tag-version && node scripts/update-version.js $(node -p \"require('./package.json').version\") ENHANCED",
+    "version:major": "npm version major --no-git-tag-version && node scripts/update-version.js $(node -p \"require('./package.json').version\") MAJOR"
   },
   "dependencies": {
     "@chakra-ui/react": "^2.8.0",
