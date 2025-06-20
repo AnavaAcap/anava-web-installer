@@ -1,5 +1,6 @@
 export interface InstallConfig {
   projectId: string;
+  projectName?: string;
   projectNumber?: string;
   region: string;
   solutionPrefix: string;

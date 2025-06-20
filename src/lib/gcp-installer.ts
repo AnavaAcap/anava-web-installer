@@ -85,7 +85,7 @@ export class AnavaGCPInstaller {
     if (!savedState) {
       InstallationStateManager.save({
         projectId: this.config.projectId,
-        projectName: this.config.projectName,
+        projectName: this.config.projectName || '',
         startedAt: new Date().toISOString(),
         lastUpdated: new Date().toISOString(),
         completedSteps: [],
@@ -153,7 +153,7 @@ export class AnavaGCPInstaller {
     const finalResult = this.compileResults(results);
     InstallationStateManager.save({
       projectId: this.config.projectId,
-      projectName: this.config.projectName,
+      projectName: this.config.projectName || '',
       startedAt: savedState?.startedAt || new Date().toISOString(),
       lastUpdated: new Date().toISOString(),
       completedSteps: steps.map(s => s.name),

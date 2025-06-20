@@ -57,7 +57,8 @@
       "Bash(vercel domains:*)",
       "Bash(vercel alias:*)",
       "Bash(vercel:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(npm run build:*)"
     ],
     "deny": []
   }
