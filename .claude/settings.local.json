@@ -61,7 +61,8 @@
       "Bash(npm run build:*)",
       "Bash(npm test:*)",
       "Bash(rg:*)",
-      "Bash(npm run version:update:*)"
+      "Bash(npm run version:update:*)",
+      "Bash(git merge:*)"
     ],
     "deny": []
   }
