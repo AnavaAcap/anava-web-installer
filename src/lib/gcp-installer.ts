@@ -520,38 +520,11 @@ Note: You can set budget alerts to control costs.`);
         // Re-throw our custom billing error
         throw err;
       } else {
-        // For ANY other billing-related error, treat as a hard stop
-        // This includes 403, SERVICE_DISABLED, permission errors, etc.
-        
-        // Create a prerequisites-style error that will show in the special UI
-        const billingSteps = [
-          {
-            name: "Enable Billing on Project",
-            description: "Link your Google Cloud project to a billing account",
-            action: `Open project billing: https://console.cloud.google.com/project/${projectId}/billing/enable`,
-            steps: [
-              "If you see 'Enable billing' button, click it",
-              "Select an existing billing account or create a new one",
-              "If creating new: Enter payment details and accept terms",
-              "Click 'Set account' to link billing to your project"
-            ]
-          },
-          {
-            name: "Enable Cloud Billing API", 
-            description: "Enable the API so the installer can verify billing status",
-            action: `Open API console: https://console.cloud.google.com/apis/api/cloudbilling.googleapis.com/overview?project=${projectId}`,
-            steps: [
-              "Click the 'Enable' button",
-              "Wait for API to be enabled (may take 1-2 minutes)",
-              "You should see a green checkmark when enabled"
-            ]
-          }
-        ];
-
-        // Encode steps as base64 to prevent XSS while preserving URLs
-        const encodedSteps = btoa(JSON.stringify(billingSteps));
-        
-        throw new Error(`PREREQUISITES_MISSING:${encodedSteps}`);
+        // For billing API access issues, warn but continue
+        // Most likely billing IS enabled but API access is restricted
+        console.warn('⚠️  Cannot verify billing status due to API restrictions');
+        console.warn('⚠️  Assuming billing is enabled and continuing installation...');
+        console.warn('⚠️  If billing is not enabled, subsequent steps will fail');
       }
     }
     

@@ -351,13 +351,13 @@ function InstallerApp() {
           <VStack align="start" spacing={1}>
             <HStack align="baseline">
               <Heading size="xl">Anava Cloud Installer</Heading>
-              <Badge colorScheme="green" ml={2}>v2.2.9-BILLING-STEPS</Badge>
+              <Badge colorScheme="green" ml={2}>v2.3.0-BILLING-PERMISSIVE</Badge>
             </HStack>
             <Text color="gray.500">
               Guided installation for Anava IoT Security Platform on Google Cloud
             </Text>
             <Text fontSize="xs" color="gray.400">
-              NOTE: v2.2.9 - Update billing setup steps with correct URLs and detailed instructions</Text>
+              NOTE: v2.3.0 - Allow installation to continue when billing API access is denied (likely billing IS enabled)</Text>
           </VStack>
           <IconButton
             aria-label="Toggle color mode"
@@ -793,11 +793,8 @@ export GCP_PROJECT_ID="${installResult.projectId}"`}
                       try {
                         // Decode base64 encoded JSON to prevent sanitization issues
                         const encodedData = error.split('PREREQUISITES_MISSING:')[1];
-                        console.log('Raw encoded data:', encodedData);
                         const decodedJson = atob(encodedData);
-                        console.log('Decoded JSON:', decodedJson);
                         const missingSteps = JSON.parse(decodedJson);
-                        console.log('Parsed steps:', missingSteps);
                         return missingSteps.map((step: any, index: number) => (
                           <Box key={index} p={4} borderWidth={1} borderRadius="md" borderColor="orange.300" bg="orange.50">
                             <HStack align="start" spacing={3}>
@@ -833,8 +830,6 @@ export GCP_PROJECT_ID="${installResult.projectId}"`}
                           </Box>
                         ));
                       } catch (e) {
-                        console.error('Error parsing prerequisites:', e);
-                        console.error('Full error message:', error);
                         return <Text color="red.500">Error parsing prerequisites: {String(e)}</Text>;
                       }
                     })()}
