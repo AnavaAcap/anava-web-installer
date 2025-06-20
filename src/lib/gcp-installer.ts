@@ -1100,8 +1100,14 @@ This manual step is required because Firestore needs you to choose security rule
           })
         }
       );
+      console.log('✅ Workload Identity Pool created');
     } catch (err: any) {
-      if (!err.message.includes('409')) throw err;
+      // 409 ALREADY_EXISTS means the pool already exists, which is fine
+      if (err.message.includes('409') || err.message.includes('ALREADY_EXISTS') || err.message.includes('already exists')) {
+        console.log('✅ Workload Identity Pool already exists');
+      } else {
+        throw err;
+      }
     }
 
     // Create OIDC Provider
@@ -1125,8 +1131,14 @@ This manual step is required because Firestore needs you to choose security rule
           })
         }
       );
+      console.log('✅ OIDC Provider created');
     } catch (err: any) {
-      if (!err.message.includes('409')) throw err;
+      // 409 ALREADY_EXISTS means the provider already exists, which is fine
+      if (err.message.includes('409') || err.message.includes('ALREADY_EXISTS') || err.message.includes('already exists')) {
+        console.log('✅ OIDC Provider already exists');
+      } else {
+        throw err;
+      }
     }
 
     return { workloadIdentityConfigured: true };

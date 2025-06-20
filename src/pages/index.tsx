@@ -351,13 +351,13 @@ function InstallerApp() {
           <VStack align="start" spacing={1}>
             <HStack align="baseline">
               <Heading size="xl">Anava Cloud Installer</Heading>
-              <Badge colorScheme="green" ml={2}>v2.3.1-API-TIMING</Badge>
+              <Badge colorScheme="green" ml={2}>v2.3.2-409-HANDLING</Badge>
             </HStack>
             <Text color="gray.500">
               Guided installation for Anava IoT Security Platform on Google Cloud
             </Text>
             <Text fontSize="xs" color="gray.400">
-              NOTE: v2.3.1 - Fix Cloud Billing API timing with proper wait/retry logic after enablement</Text>
+              NOTE: v2.3.2 - Handle 409 ALREADY_EXISTS as success for workload identity resources</Text>
           </VStack>
           <IconButton
             aria-label="Toggle color mode"
