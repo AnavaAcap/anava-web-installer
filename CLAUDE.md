@@ -47,11 +47,44 @@ npm run build
 - Resume from any step with progress tracking
 - State expires after 24 hours
 
-## Version Management
+## Task Management & Planning
+**ALWAYS use TodoWrite/TodoRead for complex tasks:**
+- Use TodoWrite tool for complex multi-step tasks (3+ steps or non-trivial work)
+- Mark todos as in_progress before starting work, completed immediately after finishing
+- Only have ONE task in_progress at any time
+- Use for user-provided task lists, complex features, or systematic comparisons
+- Skip for single straightforward tasks or trivial operations
+- Critical for planning and tracking progress visibility
+
+## Systematic Analysis & Comparison Methodology
+**When comparing implementations (e.g., bash script vs TypeScript):**
+1. Use Task tool to search and catalog all components systematically
+2. Create comprehensive lists (APIs, permissions, configurations)
+3. Use mcp__multi-ai-collab__gemini_code_review for thorough analysis
+4. Document gaps with specific line numbers and missing elements
+5. Implement fixes with version-aware migration logic
+6. Update tests to validate all new components
+
+## Multi-AI Collaboration Tools
+**Leverage collaboration tools for complex analysis:**
+- `mcp__multi-ai-collab__gemini_code_review` - Code review and gap analysis
+- `mcp__multi-ai-collab__gemini_think_deep` - Deep technical analysis
+- `mcp__multi-ai-collab__gemini_architecture` - System design decisions
+- `mcp__multi-ai-collab__gemini_debug` - Complex debugging scenarios
+- Use when dealing with large codebases or systematic comparisons
+
+## Version Management & Migration Logic
 When updating versions:
 - Update `src/pages/index.tsx` Badge component AND `package.json`
 - Format: `vX.Y.Z-DESCRIPTOR` (e.g., v2.1.2-SECURITY)
 - Add NOTE explaining changes in UI
+
+**CRITICAL: Handle Existing User Migrations**
+- Add version tracking to installation state for backward compatibility
+- Force re-run of critical steps when infrastructure changes (APIs, permissions)
+- Use version-based step invalidation to ensure users get fixes
+- Test migration logic thoroughly before deployment
+- Document breaking changes and migration paths
 
 ## Development Planning
 - **ROADMAP.md**: 4-phase evolution plan through v2.5.0-ADVANCED
@@ -79,21 +112,60 @@ After any deployment:
 - Show progress with elapsed time and retry attempts
 - Continue with warnings, don't fail hard
 - Implement retry logic for API key generation
+- **CRITICAL**: Enable managed service after API Gateway creation (prevents auth errors)
+
+### Build & Deployment Issues
+**Common build failures and solutions:**
+- ESLint errors: Temporarily disable with `eslint: { ignoreDuringBuilds: true }` in next.config.js
+- Type errors: Fix immediately or deployment will fail
+- Test timeouts: Check for infinite loops or missing mocks
+- Vercel deployment status: Use `vercel ls` to check deployment state
+- Always test build locally before pushing: `npm run build`
+
+### Infrastructure Changes Protocol  
+**When modifying core infrastructure (APIs, permissions, gateway config):**
+1. Identify all affected components systematically (use comparison methodology)
+2. Implement version-based migration logic for existing users
+3. Add comprehensive tests covering new infrastructure
+4. Force re-run critical steps for pre-existing installations
+5. Test end-to-end including authentication flows
+6. Monitor logs after deployment for authentication errors
 
 ### Git Workflow Notes
 - Security fixes may need manual merge verification
 - Check that security code actually reaches main branch
 - Test security features after any merge
+- Use descriptive commit messages with 🤖 Generated with Claude Code footer
+
+## Enhanced Tool Usage Policy
+**Optimize tool usage for performance and accuracy:**
+- Use Task tool for broad searches and unknown file locations
+- Use Glob/Grep for specific patterns when you know the scope
+- Batch multiple tool calls in single responses for performance
+- Use Read tool for specific file paths you know exist
+- Prefer Task tool for complex systematic searches (APIs, permissions, configurations)
+- Use mcp__multi-ai-collab tools for thorough analysis and review
 
 ## Key Commands
 ```bash
-# Deployment
+# Deployment verification
 vercel ls && vercel env ls
 git push origin main
 
-# Development
+# Pre-deployment validation
 npm test && npm run type-check && npm run build
 
 # Security validation
 npm test -- --testPathPattern=security
+
+# Infrastructure testing (after API/permission changes)
+npm test -- --testPathPattern=gcp-installer
+npm test -- --testPathPattern=installation-state
+
+# Version migration testing
+npm test -- --testNamePattern="v2.1.2.*re-run"
+
+# Build troubleshooting
+npm run build --verbose
+vercel logs [deployment-url]
 ```
