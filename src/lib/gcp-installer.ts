@@ -1654,11 +1654,10 @@ paths:
         console.log('Waiting for API key creation operation...');
         
         // Poll for the key to be created
-        let keyFound = false;
         let pollAttempts = 0;
         const maxPollAttempts = 6; // Try for up to 60 seconds
         
-        while (!keyFound && pollAttempts < maxPollAttempts) {
+        while (pollAttempts < maxPollAttempts) {
           await new Promise(resolve => setTimeout(resolve, 10000));
           pollAttempts++;
           

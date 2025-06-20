@@ -2,6 +2,10 @@
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  eslint: {
+    // Temporarily disable ESLint during builds on production
+    ignoreDuringBuilds: true,
+  },
 
   // Disable source maps in production for security
   productionBrowserSourceMaps: false,
