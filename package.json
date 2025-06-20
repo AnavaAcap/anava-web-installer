@@ -1,6 +1,6 @@
 {
   "name": "anava-cloud-installer",
-  "version": "2.2.5",
+  "version": "2.2.6",
   "description": "One-click installer for Anava IoT Security Platform on Google Cloud",
   "private": true,
   "scripts": {

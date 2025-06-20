@@ -347,13 +347,13 @@ function InstallerApp() {
           <VStack align="start" spacing={1}>
             <HStack align="baseline">
               <Heading size="xl">Anava Cloud Installer</Heading>
-              <Badge colorScheme="green" ml={2}>v2.2.5-BILLING-UI</Badge>
+              <Badge colorScheme="green" ml={2}>v2.2.6-BILLING-UI-FIX</Badge>
             </HStack>
             <Text color="gray.500">
               Guided installation for Anava IoT Security Platform on Google Cloud
             </Text>
             <Text fontSize="xs" color="gray.400">
-              NOTE: v2.2.5 - Clean billing error UI with step-by-step guidance</Text>
+              NOTE: v2.2.6 - Fix base64 encoding and UI text for billing prerequisites</Text>
           </VStack>
           <IconButton
             aria-label="Toggle color mode"
@@ -775,9 +775,9 @@ export GCP_PROJECT_ID="${installResult.projectId}"`}
                 <Alert status="info">
                   <AlertIcon />
                   <Box>
-                    <AlertTitle>Prerequisites Check - Manual Setup Required</AlertTitle>
+                    <AlertTitle>Setup Required - Manual Steps</AlertTitle>
                     <AlertDescription>
-                      The installer has detected some prerequisites that need to be completed manually in the Firebase console before continuing.
+                      The installer has detected requirements that need to be completed manually before continuing.
                     </AlertDescription>
                   </Box>
                 </Alert>
@@ -789,7 +789,7 @@ export GCP_PROJECT_ID="${installResult.projectId}"`}
                       try {
                         // Decode base64 encoded JSON to prevent sanitization issues
                         const encodedData = error.split('PREREQUISITES_MISSING:')[1];
-                        const decodedJson = Buffer.from(encodedData, 'base64').toString('utf-8');
+                        const decodedJson = atob(encodedData);
                         const missingSteps = JSON.parse(decodedJson);
                         return missingSteps.map((step: any, index: number) => (
                           <Box key={index} p={4} borderWidth={1} borderRadius="md" borderColor="orange.300" bg="orange.50">
@@ -838,9 +838,9 @@ export GCP_PROJECT_ID="${installResult.projectId}"`}
                     <AlertTitle>Why are these steps manual?</AlertTitle>
                     <AlertDescription>
                       <List spacing={1} mt={2}>
-                        <ListItem>• Firebase initialization requires accepting terms of service</ListItem>
-                        <ListItem>• Firestore database creation requires choosing security rules</ListItem>
-                        <ListItem>• These steps involve legal agreements that cannot be automated</ListItem>
+                        <ListItem>• Billing setup requires payment information and legal agreements</ListItem>
+                        <ListItem>• API enablement may require accepting terms of service</ListItem>
+                        <ListItem>• Some steps involve permissions that cannot be automated</ListItem>
                       </List>
                     </AlertDescription>
                   </Box>

@@ -547,7 +547,7 @@ Note: You can set budget alerts to control costs.`);
         ];
 
         // Encode steps as base64 to prevent XSS while preserving URLs
-        const encodedSteps = Buffer.from(JSON.stringify(billingSteps)).toString('base64');
+        const encodedSteps = btoa(JSON.stringify(billingSteps));
         
         throw new Error(`PREREQUISITES_MISSING:${encodedSteps}`);
       }
