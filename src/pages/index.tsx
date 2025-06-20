@@ -347,13 +347,13 @@ function InstallerApp() {
           <VStack align="start" spacing={1}>
             <HStack align="baseline">
               <Heading size="xl">Anava Cloud Installer</Heading>
-              <Badge colorScheme="green" ml={2}>v2.2.0-SERVICE-DEPLOY</Badge>
+              <Badge colorScheme="green" ml={2}>v2.2.1-RETRY-DEPLOY</Badge>
             </HStack>
             <Text color="gray.500">
               Guided installation for Anava IoT Security Platform on Google Cloud
             </Text>
             <Text fontSize="xs" color="gray.400">
-              NOTE: v2.2.0 - Deploy service configuration before enabling (critical fix)</Text>
+              NOTE: v2.2.1 - Deploy service config on retry when service not found</Text>
           </VStack>
           <IconButton
             aria-label="Toggle color mode"

@@ -1707,17 +1707,38 @@ paths:
             }
           } catch (err: any) {
             if (err.message.includes('403') || err.message.includes('404')) {
-              // Service might not exist or we can't check, try to enable anyway
-              console.log('Could not check service status, attempting to enable...');
+              // Service might not exist, try to deploy service configuration first
+              console.log('Service not found. Deploying service configuration...');
+              this.onProgress('Deploying API Gateway service configuration...', 96);
+              
               try {
+                // Create OpenAPI spec and deploy it
+                const openApiSpec = this.generateOpenAPISpec(apiDetails.managedService);
+                
+                await this.gcpApiCall(
+                  `https://servicemanagement.googleapis.com/v1/services/${apiDetails.managedService}/configs`,
+                  {
+                    method: 'POST',
+                    body: JSON.stringify({
+                      openapi: openApiSpec
+                    })
+                  }
+                );
+                console.log('✅ Service configuration deployed successfully');
+                console.log('Waiting 30 seconds for service configuration to propagate...');
+                await new Promise(resolve => setTimeout(resolve, 30000));
+                
+                // Now try to enable the service
+                console.log('Attempting to enable managed service after deployment...');
                 await this.gcpApiCall(
                   `https://serviceusage.googleapis.com/v1/projects/${this.config.projectId}/services/${apiDetails.managedService}:enable`,
                   { method: 'POST' }
                 );
+                console.log('✅ Managed service enabled successfully');
                 console.log('Waiting 30 seconds for managed service to propagate...');
                 await new Promise(resolve => setTimeout(resolve, 30000));
-              } catch (enableErr: any) {
-                console.warn('Failed to enable managed service:', enableErr.message);
+              } catch (deployErr: any) {
+                console.warn('Failed to deploy/enable managed service:', deployErr.message);
               }
             }
           }
