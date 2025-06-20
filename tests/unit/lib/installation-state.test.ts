@@ -305,6 +305,85 @@ describe('InstallationStateManager', () => {
 
       expect(InstallationStateManager.hasCompletedStep('test-project', 'Any Step')).toBe(false);
     });
+
+    // Critical v2.1.2 version-based step invalidation tests
+    describe('v2.1.2 Critical Step Re-run Logic', () => {
+      it('should force re-run of critical steps for pre-v2.1.2 installations', () => {
+        const oldState: SavedInstallationState = {
+          projectId: 'test-project',
+          projectName: 'Test Project',
+          startedAt: '2024-01-01T00:00:00Z',
+          lastUpdated: new Date().toISOString(),
+          version: 'v2.1.0-RESILIENT', // Old version
+          completedSteps: ['Enabling APIs', 'Creating API Gateway', 'Creating service accounts'],
+          resources: {}
+        };
+
+        mockLocalStorage.getItem.mockReturnValue(JSON.stringify(oldState));
+
+        // These critical steps should be forced to re-run for API/permission fixes
+        expect(InstallationStateManager.hasCompletedStep('test-project', 'Enabling APIs')).toBe(false);
+        expect(InstallationStateManager.hasCompletedStep('test-project', 'Creating API Gateway')).toBe(false);
+        expect(InstallationStateManager.hasCompletedStep('test-project', 'Creating service accounts')).toBe(false);
+      });
+
+      it('should force re-run of critical steps for installations without version', () => {
+        const stateWithoutVersion: SavedInstallationState = {
+          projectId: 'test-project',
+          projectName: 'Test Project',
+          startedAt: '2024-01-01T00:00:00Z',
+          lastUpdated: new Date().toISOString(),
+          // No version field = pre-v2.1.2
+          completedSteps: ['Enabling APIs', 'Creating API Gateway', 'Creating service accounts'],
+          resources: {}
+        };
+
+        mockLocalStorage.getItem.mockReturnValue(JSON.stringify(stateWithoutVersion));
+
+        // Critical steps should be forced to re-run
+        expect(InstallationStateManager.hasCompletedStep('test-project', 'Enabling APIs')).toBe(false);
+        expect(InstallationStateManager.hasCompletedStep('test-project', 'Creating API Gateway')).toBe(false);
+        expect(InstallationStateManager.hasCompletedStep('test-project', 'Creating service accounts')).toBe(false);
+      });
+
+      it('should NOT force re-run of critical steps for v2.1.2-SECURITY installations', () => {
+        const currentVersionState: SavedInstallationState = {
+          projectId: 'test-project',
+          projectName: 'Test Project',
+          startedAt: '2024-01-01T00:00:00Z',
+          lastUpdated: new Date().toISOString(),
+          version: 'v2.1.2-SECURITY', // Current version
+          completedSteps: ['Enabling APIs', 'Creating API Gateway', 'Creating service accounts'],
+          resources: {}
+        };
+
+        mockLocalStorage.getItem.mockReturnValue(JSON.stringify(currentVersionState));
+
+        // Critical steps should NOT be forced to re-run for current version
+        expect(InstallationStateManager.hasCompletedStep('test-project', 'Enabling APIs')).toBe(true);
+        expect(InstallationStateManager.hasCompletedStep('test-project', 'Creating API Gateway')).toBe(true);
+        expect(InstallationStateManager.hasCompletedStep('test-project', 'Creating service accounts')).toBe(true);
+      });
+
+      it('should NOT affect non-critical steps', () => {
+        const oldState: SavedInstallationState = {
+          projectId: 'test-project',
+          projectName: 'Test Project',
+          startedAt: '2024-01-01T00:00:00Z',
+          lastUpdated: new Date().toISOString(),
+          version: 'v2.1.0-RESILIENT', // Old version
+          completedSteps: ['Checking prerequisites', 'Validating project', 'Setting up Firebase'],
+          resources: {}
+        };
+
+        mockLocalStorage.getItem.mockReturnValue(JSON.stringify(oldState));
+
+        // Non-critical steps should still be considered completed
+        expect(InstallationStateManager.hasCompletedStep('test-project', 'Checking prerequisites')).toBe(true);
+        expect(InstallationStateManager.hasCompletedStep('test-project', 'Validating project')).toBe(true);
+        expect(InstallationStateManager.hasCompletedStep('test-project', 'Setting up Firebase')).toBe(true);
+      });
+    });
   });
 
   describe('getResources', () => {

@@ -3,6 +3,7 @@ export interface SavedInstallationState {
   projectName: string;
   startedAt: string;
   lastUpdated: string;
+  version?: string; // Track installer version for migration logic
   completedSteps: string[];
   resources: {
     serviceAccount?: {
@@ -41,13 +42,22 @@ export interface SavedInstallationState {
 import { SecureStorage, sanitizeForStorage } from './secure-storage';
 
 const STORAGE_KEY = 'anava-installation-state';
+const CURRENT_VERSION = 'v2.1.2-SECURITY';
+
+// Steps that need to be re-run for v2.1.2 due to critical API/permission fixes
+const CRITICAL_STEPS_V2_1_2 = [
+  'Enabling APIs',        // Added 10 missing APIs
+  'Creating API Gateway', // Added managed service enablement
+  'Creating service accounts' // Added logging permissions
+];
 
 export class InstallationStateManager {
   static save(state: SavedInstallationState): void {
     try {
       const stateWithTimestamp = {
         ...state,
-        lastUpdated: new Date().toISOString()
+        lastUpdated: new Date().toISOString(),
+        version: CURRENT_VERSION
       };
       
       // Sanitize sensitive data before storage
@@ -116,7 +126,22 @@ export class InstallationStateManager {
 
   static hasCompletedStep(projectId: string, step: string): boolean {
     const state = this.load(projectId);
-    return state?.completedSteps.includes(step) || false;
+    if (!state || !state.completedSteps.includes(step)) {
+      return false;
+    }
+
+    // Force re-run of critical steps if they were completed before v2.1.2-SECURITY
+    if (CRITICAL_STEPS_V2_1_2.includes(step)) {
+      const stateVersion = state.version;
+      
+      // If no version recorded or it's before v2.1.2, force re-run
+      if (!stateVersion || stateVersion !== CURRENT_VERSION) {
+        console.log(`Force re-running "${step}" due to critical v2.1.2 updates (APIs and permissions)`);
+        return false;
+      }
+    }
+
+    return true;
   }
 
   static getResources(projectId: string): SavedInstallationState['resources'] | null {
