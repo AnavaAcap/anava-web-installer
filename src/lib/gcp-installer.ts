@@ -305,16 +305,19 @@ export class AnavaGCPInstaller {
         
         // Check if there are any users (we need at least one for testing)
         try {
+          // Use the Firebase Auth Admin API to list users instead of accounts:lookup
+          // The accounts:lookup endpoint requires an idToken or localId parameter
           const users = await this.gcpApiCall(
-            `https://identitytoolkit.googleapis.com/v1/projects/${this.config.projectId}/accounts:lookup`,
+            `https://identitytoolkit.googleapis.com/v1/projects/${this.config.projectId}/accounts:query`,
             {
               method: 'POST',
               body: JSON.stringify({
+                returnUserInfo: true,
                 maxResults: 1
               })
             }
           );
-          if (users.users && users.users.length > 0) {
+          if (users.userInfo && users.userInfo.length > 0) {
             prerequisites.hasAuthUsers = true;
           }
         } catch (err) {
