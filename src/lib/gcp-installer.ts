@@ -1558,18 +1558,30 @@ paths:
     const keyDisplayName = `${this.config.solutionPrefix}-device-key`;
     const apiId = `${this.config.solutionPrefix}-device-api`;
     
-    // Wait a bit for API Gateway to be fully ready
+    // Wait longer for API Gateway to be fully ready (increased from 30s to 120s)
     console.log('Waiting for API Gateway to be fully ready before creating API key...');
-    await new Promise(resolve => setTimeout(resolve, 30000));
+    this.onProgress('Waiting for API Gateway to stabilize before creating API key...', 95);
+    
+    // Wait 2 minutes with progress updates every 10 seconds
+    for (let i = 0; i < 12; i++) {
+      await new Promise(resolve => setTimeout(resolve, 10000));
+      const secondsWaited = (i + 1) * 10;
+      this.onProgress(`Waiting for API Gateway... (${secondsWaited}s/120s)`, 95 + Math.floor((i / 12) * 2));
+    }
     
     // First, get the managed service name from the API Gateway API
     let managedServiceName = '';
-    let retries = 3;
+    let retries = 5; // Increased from 3 to 5 attempts
     while (retries > 0 && !managedServiceName) {
       try {
-        console.log(`Getting managed service name from API Gateway... (attempt ${4 - retries})`);
+        console.log(`Getting managed service name from API Gateway... (attempt ${6 - retries})`);
+        this.onProgress(`Retrieving API Gateway details... (attempt ${6 - retries}/5)`, 97);
+        
         const apiDetails = await this.gcpApiCall(
-          `https://apigateway.googleapis.com/v1/projects/${this.config.projectId}/locations/global/apis/${apiId}`
+          `https://apigateway.googleapis.com/v1/projects/${this.config.projectId}/locations/global/apis/${apiId}`,
+          {}, // default GET
+          3, // retries
+          30000 // 30 second timeout
         );
         managedServiceName = apiDetails.managedService;
         if (managedServiceName) {
@@ -1580,8 +1592,8 @@ paths:
         console.error('Failed to get managed service name:', err.message);
         retries--;
         if (retries > 0) {
-          console.log(`Retrying in 10 seconds... (${retries} attempts left)`);
-          await new Promise(resolve => setTimeout(resolve, 10000));
+          console.log(`Retrying in 20 seconds... (${retries} attempts left)`);
+          await new Promise(resolve => setTimeout(resolve, 20000)); // Increased from 10s to 20s
         }
       }
     }
@@ -1657,18 +1669,26 @@ paths:
         
         // Poll for the key to be created
         let pollAttempts = 0;
-        const maxPollAttempts = 6; // Try for up to 60 seconds
+        const maxPollAttempts = 30; // Try for up to 5 minutes (increased from 60 seconds)
         
         while (pollAttempts < maxPollAttempts) {
           await new Promise(resolve => setTimeout(resolve, 10000));
           pollAttempts++;
           
-          console.log(`Checking for API key... (attempt ${pollAttempts}/${maxPollAttempts})`);
+          const minutesWaited = Math.floor((pollAttempts * 10) / 60);
+          const secondsWaited = (pollAttempts * 10) % 60;
+          const timeStr = minutesWaited > 0 ? `${minutesWaited}m ${secondsWaited}s` : `${secondsWaited}s`;
+          
+          console.log(`Checking for API key... (attempt ${pollAttempts}/${maxPollAttempts}, waited ${timeStr})`);
+          this.onProgress(`Creating API key... (checking ${timeStr})`, 98);
           
           try {
             // List keys again to find our new key
             const keys = await this.gcpApiCall(
-              `https://apikeys.googleapis.com/v2/projects/${this.config.projectId}/locations/global/keys`
+              `https://apikeys.googleapis.com/v2/projects/${this.config.projectId}/locations/global/keys`,
+              {}, // default GET
+              3, // retries
+              30000 // 30 second timeout for listing keys
             );
             
             const newKey = keys.keys?.find((key: any) => 
@@ -1677,10 +1697,14 @@ paths:
             
             if (newKey) {
               const keyDetails = await this.gcpApiCall(
-                `https://apikeys.googleapis.com/v2/${newKey.name}/keyString`
+                `https://apikeys.googleapis.com/v2/${newKey.name}/keyString`,
+                {}, // default GET
+                3, // retries
+                30000 // 30 second timeout
               );
               if (keyDetails.keyString) {
                 console.log('✅ API key created successfully');
+                this.onProgress('API key created successfully!', 100);
                 return { apiKey: keyDetails.keyString, apiKeyId: newKey.name };
               }
             }
@@ -1697,7 +1721,7 @@ paths:
         return { apiKey: keyString, apiKeyId: response.name };
       }
       
-      throw new Error('API key creation timed out - the key may still be creating. Try running the installer again in a few minutes.');
+      throw new Error('API key creation is taking longer than expected (>5 minutes). The key may still be creating in the background. Please wait a few more minutes and try again, or create the key manually in the Google Cloud Console.');
       
     } catch (err: any) {
       console.error('Failed to create API key:', err.message);
