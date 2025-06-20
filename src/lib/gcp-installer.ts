@@ -473,25 +473,39 @@ export class AnavaGCPInstaller {
     
     // Enable Cloud Billing API first before checking billing status
     console.log('Enabling Cloud Billing API...');
+    let billingApiEnabled = false;
     try {
       await this.gcpApiCall(
         `https://serviceusage.googleapis.com/v1/projects/${projectId}/services/cloudbilling.googleapis.com:enable`,
         { method: 'POST' }
       );
       console.log('✅ Cloud Billing API enabled');
+      billingApiEnabled = true;
+      
+      // Wait for API to propagate (APIs take time to become available)
+      console.log('⏳ Waiting for Cloud Billing API to propagate...');
+      await new Promise(resolve => setTimeout(resolve, 5000)); // 5 second wait
+      
     } catch (err: any) {
       console.warn('⚠️  Warning: Could not enable Cloud Billing API:', err.message);
     }
     
-    // Check if billing is enabled
+    // Check if billing is enabled with retries for newly enabled API
     console.log('Checking billing status...');
-    try {
-      const billingInfo = await this.gcpApiCall(
-        `https://cloudbilling.googleapis.com/v1/projects/${projectId}/billingInfo`
-      );
-      
-      if (!billingInfo.billingEnabled) {
-        throw new Error(`❌ BILLING NOT ENABLED
+    let billingCheckAttempts = 0;
+    const maxBillingAttempts = billingApiEnabled ? 3 : 1; // More retries if we just enabled the API
+    
+    while (billingCheckAttempts < maxBillingAttempts) {
+      try {
+        const billingInfo = await this.gcpApiCall(
+          `https://cloudbilling.googleapis.com/v1/projects/${projectId}/billingInfo`,
+          {}, // default options
+          1, // single retry for this specific call
+          10000 // 10 second timeout
+        );
+        
+        if (!billingInfo.billingEnabled) {
+          throw new Error(`❌ BILLING NOT ENABLED
 
 The project "${projectId}" does not have billing enabled.
 
@@ -509,22 +523,32 @@ Why billing is required:
 • Most GCP services beyond the free tier need billing
 
 Note: You can set budget alerts to control costs.`);
-      }
-      
-      console.log('✅ Billing is enabled');
-    } catch (err: any) {
-      console.error('Billing check failed:', err.message);
-      
-      // Check specific error conditions
-      if (err.message.includes('BILLING NOT ENABLED')) {
-        // Re-throw our custom billing error
-        throw err;
-      } else {
-        // For billing API access issues, warn but continue
-        // Most likely billing IS enabled but API access is restricted
-        console.warn('⚠️  Cannot verify billing status due to API restrictions');
-        console.warn('⚠️  Assuming billing is enabled and continuing installation...');
-        console.warn('⚠️  If billing is not enabled, subsequent steps will fail');
+        }
+        
+        console.log('✅ Billing is enabled');
+        break; // Success - exit retry loop
+        
+      } catch (err: any) {
+        billingCheckAttempts++;
+        console.error(`Billing check failed (attempt ${billingCheckAttempts}/${maxBillingAttempts}):`, err.message);
+        
+        // Check specific error conditions
+        if (err.message.includes('BILLING NOT ENABLED')) {
+          // Re-throw our custom billing error
+          throw err;
+        } else if (err.message.includes('SERVICE_DISABLED') && billingCheckAttempts < maxBillingAttempts) {
+          // API still propagating, wait and retry
+          console.log('⏳ Cloud Billing API still propagating, waiting 10 seconds...');
+          await new Promise(resolve => setTimeout(resolve, 10000));
+          continue;
+        } else if (billingCheckAttempts >= maxBillingAttempts) {
+          // For billing API access issues after retries, warn but continue
+          // Most likely billing IS enabled but API access is restricted
+          console.warn('⚠️  Cannot verify billing status due to API restrictions');
+          console.warn('⚠️  Assuming billing is enabled and continuing installation...');
+          console.warn('⚠️  If billing is not enabled, subsequent steps will fail');
+          break;
+        }
       }
     }
     

@@ -351,13 +351,13 @@ function InstallerApp() {
           <VStack align="start" spacing={1}>
             <HStack align="baseline">
               <Heading size="xl">Anava Cloud Installer</Heading>
-              <Badge colorScheme="green" ml={2}>v2.3.0-BILLING-PERMISSIVE</Badge>
+              <Badge colorScheme="green" ml={2}>v2.3.1-API-TIMING</Badge>
             </HStack>
             <Text color="gray.500">
               Guided installation for Anava IoT Security Platform on Google Cloud
             </Text>
             <Text fontSize="xs" color="gray.400">
-              NOTE: v2.3.0 - Allow installation to continue when billing API access is denied (likely billing IS enabled)</Text>
+              NOTE: v2.3.1 - Fix Cloud Billing API timing with proper wait/retry logic after enablement</Text>
           </VStack>
           <IconButton
             aria-label="Toggle color mode"
