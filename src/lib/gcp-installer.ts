@@ -471,6 +471,18 @@ export class AnavaGCPInstaller {
     // Get project number for later use
     this.config.projectNumber = project.projectNumber;
     
+    // Enable Cloud Billing API first before checking billing status
+    console.log('Enabling Cloud Billing API...');
+    try {
+      await this.gcpApiCall(
+        `https://serviceusage.googleapis.com/v1/projects/${projectId}/services/cloudbilling.googleapis.com:enable`,
+        { method: 'POST' }
+      );
+      console.log('✅ Cloud Billing API enabled');
+    } catch (err: any) {
+      console.warn('⚠️  Warning: Could not enable Cloud Billing API:', err.message);
+    }
+    
     // Check if billing is enabled
     console.log('Checking billing status...');
     try {
@@ -501,9 +513,26 @@ Note: You can set budget alerts to control costs.`);
       
       console.log('✅ Billing is enabled');
     } catch (err: any) {
-      // If it's a permission error, warn but continue
-      if (err.message.includes('403') || err.message.includes('Permission')) {
-        console.warn('⚠️  Unable to verify billing status (permission denied) - continuing anyway...');
+      // If it's a permission error related to billing API access, provide guidance
+      if (err.message.includes('403') || err.message.includes('Permission') || err.message.includes('SERVICE_DISABLED')) {
+        console.warn('⚠️  Unable to verify billing status - API access denied');
+        // Add billing check as a prerequisite if we can't verify programmatically
+        throw new Error(`❌ BILLING VERIFICATION REQUIRED
+
+Cannot verify billing status programmatically. Please ensure:
+
+1. Billing is enabled on this project: 
+   https://console.cloud.google.com/billing/linkedaccount?project=${projectId}
+
+2. Cloud Billing API is enabled:
+   https://console.cloud.google.com/apis/api/cloudbilling.googleapis.com/overview?project=${projectId}
+
+3. Your account has billing permissions on this project
+
+Most GCP services (Cloud Functions, API Gateway, Vertex AI) require billing to be enabled.
+Without billing, the installation will likely fail at later steps.
+
+After enabling billing, please try the installer again.`);
       } else if (err.message.includes('BILLING NOT ENABLED')) {
         // Re-throw our custom billing error
         throw err;
