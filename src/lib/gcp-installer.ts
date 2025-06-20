@@ -513,32 +513,39 @@ Note: You can set budget alerts to control costs.`);
       
       console.log('✅ Billing is enabled');
     } catch (err: any) {
-      // If it's a permission error related to billing API access, provide guidance
-      if (err.message.includes('403') || err.message.includes('Permission') || err.message.includes('SERVICE_DISABLED')) {
-        console.warn('⚠️  Unable to verify billing status - API access denied');
-        // Add billing check as a prerequisite if we can't verify programmatically
-        throw new Error(`❌ BILLING VERIFICATION REQUIRED
-
-Cannot verify billing status programmatically. Please ensure:
-
-1. Billing is enabled on this project: 
-   https://console.cloud.google.com/billing/linkedaccount?project=${projectId}
-
-2. Cloud Billing API is enabled:
-   https://console.cloud.google.com/apis/api/cloudbilling.googleapis.com/overview?project=${projectId}
-
-3. Your account has billing permissions on this project
-
-Most GCP services (Cloud Functions, API Gateway, Vertex AI) require billing to be enabled.
-Without billing, the installation will likely fail at later steps.
-
-After enabling billing, please try the installer again.`);
-      } else if (err.message.includes('BILLING NOT ENABLED')) {
+      console.error('Billing check failed:', err.message);
+      
+      // Check specific error conditions
+      if (err.message.includes('BILLING NOT ENABLED')) {
         // Re-throw our custom billing error
         throw err;
       } else {
-        // For other errors, warn but continue
-        console.warn('⚠️  Unable to verify billing status:', err.message);
+        // For ANY other billing-related error, treat as a hard stop
+        // This includes 403, SERVICE_DISABLED, permission errors, etc.
+        throw new Error(`❌ BILLING SETUP REQUIRED
+
+Cannot verify or access billing for project "${projectId}".
+
+This is a CRITICAL requirement - the installer cannot proceed without billing enabled.
+
+Required actions:
+1. Enable billing on this project: 
+   https://console.cloud.google.com/billing/linkedaccount?project=${projectId}
+
+2. Enable Cloud Billing API:
+   https://console.cloud.google.com/apis/api/cloudbilling.googleapis.com/overview?project=${projectId}
+
+3. Ensure your account has billing permissions on this project
+
+Why this is required:
+• Cloud Functions deployment requires billing
+• API Gateway requires billing  
+• Vertex AI requires billing
+• Most GCP services beyond free tier require billing
+
+Original error: ${err.message}
+
+After setting up billing, please try the installer again.`);
       }
     }
     
