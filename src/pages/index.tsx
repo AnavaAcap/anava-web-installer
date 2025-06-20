@@ -248,12 +248,16 @@ function InstallerApp() {
         isClosable: true,
       });
     } catch (err: any) {
-      const sanitizedError = sanitizeErrorMessage(err);
-      setError(sanitizedError);
-      setStatus('error');
-      
-      // Don't show error toast for prerequisites check
-      if (!sanitizedError.includes('PREREQUISITES_MISSING:')) {
+      // Handle prerequisites errors specially to preserve base64 encoding
+      const rawError = err?.message || String(err);
+      if (rawError.includes('PREREQUISITES_MISSING:')) {
+        setError(rawError); // Don't sanitize - preserve base64
+        setStatus('error');
+      } else {
+        const sanitizedError = sanitizeErrorMessage(err);
+        setError(sanitizedError);
+        setStatus('error');
+        
         toast({
           title: 'Installation failed',
           description: sanitizedError,
@@ -347,13 +351,13 @@ function InstallerApp() {
           <VStack align="start" spacing={1}>
             <HStack align="baseline">
               <Heading size="xl">Anava Cloud Installer</Heading>
-              <Badge colorScheme="green" ml={2}>v2.2.7-DEBUG</Badge>
+              <Badge colorScheme="green" ml={2}>v2.2.8-BASE64-FIX</Badge>
             </HStack>
             <Text color="gray.500">
               Guided installation for Anava IoT Security Platform on Google Cloud
             </Text>
             <Text fontSize="xs" color="gray.400">
-              NOTE: v2.2.7 - Debug base64 decoding issue with console logging</Text>
+              NOTE: v2.2.8 - Fix base64 corruption by bypassing sanitization for prerequisites</Text>
           </VStack>
           <IconButton
             aria-label="Toggle color mode"
