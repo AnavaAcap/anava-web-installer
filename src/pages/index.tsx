@@ -351,13 +351,13 @@ function InstallerApp() {
           <VStack align="start" spacing={1}>
             <HStack align="baseline">
               <Heading size="xl">Anava Cloud Installer</Heading>
-              <Badge colorScheme="green" ml={2}>v2.2.8-BASE64-FIX</Badge>
+              <Badge colorScheme="green" ml={2}>v2.2.9-BILLING-STEPS</Badge>
             </HStack>
             <Text color="gray.500">
               Guided installation for Anava IoT Security Platform on Google Cloud
             </Text>
             <Text fontSize="xs" color="gray.400">
-              NOTE: v2.2.8 - Fix base64 corruption by bypassing sanitization for prerequisites</Text>
+              NOTE: v2.2.9 - Update billing setup steps with correct URLs and detailed instructions</Text>
           </VStack>
           <IconButton
             aria-label="Toggle color mode"

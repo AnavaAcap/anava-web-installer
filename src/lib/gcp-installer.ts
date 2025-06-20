@@ -526,22 +526,24 @@ Note: You can set budget alerts to control costs.`);
         // Create a prerequisites-style error that will show in the special UI
         const billingSteps = [
           {
-            name: "Enable Billing",
-            description: "Set up billing on your Google Cloud project",
-            action: `Open billing settings: https://console.cloud.google.com/billing/linkedaccount?project=${projectId}`,
+            name: "Enable Billing on Project",
+            description: "Link your Google Cloud project to a billing account",
+            action: `Open project billing: https://console.cloud.google.com/project/${projectId}/billing/enable`,
             steps: [
-              "Click 'Link a billing account' or 'Enable billing'",
-              "Select or create a billing account",
-              "Confirm billing is enabled"
+              "If you see 'Enable billing' button, click it",
+              "Select an existing billing account or create a new one",
+              "If creating new: Enter payment details and accept terms",
+              "Click 'Set account' to link billing to your project"
             ]
           },
           {
             name: "Enable Cloud Billing API", 
-            description: "Enable the Cloud Billing API to verify billing status",
+            description: "Enable the API so the installer can verify billing status",
             action: `Open API console: https://console.cloud.google.com/apis/api/cloudbilling.googleapis.com/overview?project=${projectId}`,
             steps: [
               "Click the 'Enable' button",
-              "Wait for API to be enabled (may take a few minutes)"
+              "Wait for API to be enabled (may take 1-2 minutes)",
+              "You should see a green checkmark when enabled"
             ]
           }
         ];
