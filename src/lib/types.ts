@@ -1,5 +1,6 @@
 export interface InstallConfig {
   projectId: string;
+  projectName?: string;
   projectNumber?: string;
   region: string;
   solutionPrefix: string;
@@ -23,6 +24,10 @@ export interface InstallResult {
   setupCommand?: string;
   configurationSummary?: Record<string, any>;
   error?: string;
+  apiGatewayWarning?: string;
+  shouldRetryLater?: boolean;
+  resumedInstallation?: boolean;
+  skippedSteps?: string[];
 }
 
 export type InstallStatus = 'ready' | 'authenticating' | 'selecting' | 'installing' | 'completed' | 'error';

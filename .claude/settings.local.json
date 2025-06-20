@@ -48,7 +48,22 @@
       "Bash(git sparse-checkout:*)",
       "Bash(mv:*)",
       "Bash(true)",
-      "Bash(git rm:*)"
+      "Bash(git rm:*)",
+      "WebFetch(domain:github.com)",
+      "Bash(./setup-github-repo.sh)",
+      "Bash(gh repo create:*)",
+      "Bash(git branch:*)",
+      "Bash(vercel ls:*)",
+      "Bash(vercel domains:*)",
+      "Bash(vercel alias:*)",
+      "Bash(vercel:*)",
+      "Bash(cat:*)",
+      "Bash(npm run build:*)",
+      "Bash(npm test:*)",
+      "Bash(rg:*)",
+      "Bash(npm run version:update:*)",
+      "mcp__multi-ai-collab__ask_gemini",
+      "Bash(npm run type-check:*)"
     ],
     "deny": []
   }

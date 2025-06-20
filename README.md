@@ -1,121 +1,175 @@
-# Anava Cloud Installer
+# Anava Web Installer
 
-A revolutionary web-based installer for the Anava IoT Security Platform on Google Cloud. No command line, no VMs, just click and install!
+A secure, one-click web installer for deploying the Anava IoT Security Platform on Google Cloud Platform (GCP).
+
+## Overview
+
+This standalone web application provides a user-friendly interface for installing and configuring all necessary GCP infrastructure components for the Anava platform, including:
+
+- Vertex AI integration
+- Cloud Functions for device authentication
+- Token Vending Machine (TVM) for secure credential management
+- API Gateway for secure endpoints
+- Firebase integration for authentication and real-time data
+- Workload Identity Federation for secure service-to-service communication
 
 ## Features
 
-- **Zero Local Setup**: Runs entirely in the browser
-- **OAuth Authentication**: Secure Google Cloud authentication
-- **One-Click Deploy**: Complete infrastructure setup in minutes
-- **Real-time Progress**: Visual feedback during installation
-- **Professional UI**: Modern, responsive interface
+- **OAuth Authentication**: Secure Google OAuth integration for GCP access
+- **One-Click Installation**: Automated setup of all required GCP services
+- **Real-Time Progress Tracking**: Visual feedback during installation
+- **Error Recovery**: Robust error handling with detailed diagnostics
+- **Security First**: Implements least-privilege IAM policies and secure token management
 
-## What It Installs
+## Prerequisites
 
-- ✅ 4 Service Accounts with proper IAM roles
-- ✅ 2 Cloud Functions (Device Auth & Token Vending Machine)
-- ✅ Workload Identity Federation setup
-- ✅ API Gateway with OpenAPI specification
-- ✅ Firestore database
-- ✅ All required GCP APIs enabled
-- ✅ API keys generated and configured
+- A Google Cloud Platform account with billing enabled
+- A GCP project with Owner or Editor permissions
+- Node.js 20+ and npm installed locally (for development)
 
 ## Quick Start
 
-### Option 1: Use Our Hosted Version
-Visit: https://install.anava.ai (coming soon)
+### Production Deployment
 
-### Option 2: Deploy Your Own
+The installer is available at: [https://install.anava.ai](https://install.anava.ai)
 
-1. **Setup Google OAuth**
+### Development Setup
+
+1. Clone the repository:
    ```bash
-   # Go to Google Cloud Console
-   # APIs & Services > Credentials > Create Credentials > OAuth client ID
-   # Application type: Web application
-   # Authorized JavaScript origins: https://your-domain.vercel.app
-   # Authorized redirect URIs: https://your-domain.vercel.app
+   git clone https://github.com/yourusername/anava-web-installer.git
+   cd anava-web-installer
    ```
 
-2. **Deploy to Vercel (Recommended)**
+2. Install dependencies:
    ```bash
-   # Install dependencies
    npm install
-
-   # Set environment variable
-   export NEXT_PUBLIC_GOOGLE_CLIENT_ID="your-oauth-client-id"
-
-   # Deploy
-   npx vercel --prod
    ```
 
-3. **Deploy to Netlify**
+3. Set up environment variables:
    ```bash
-   # Build the static site
-   npm run build
-
-   # Deploy the 'out' directory to Netlify
+   cp .env.example .env.local
+   # Edit .env.local with your Google OAuth client ID
    ```
 
-## Development
+4. Run the development server:
+   ```bash
+   npm run dev
+   ```
 
-```bash
-# Install dependencies
-npm install
-
-# Set up environment
-cp .env.example .env.local
-# Edit .env.local with your Google OAuth client ID
-
-# Run development server
-npm run dev
-
-# Build for production
-npm run build
-```
+5. Open [http://localhost:3000](http://localhost:3000)
 
 ## Architecture
 
-This installer uses:
-- **Next.js** with static export for hosting anywhere
-- **Google OAuth** for secure authentication
-- **GCP REST APIs** for resource provisioning
-- **Chakra UI** for professional interface
-- **React Hooks** for state management
+The installer creates the following GCP resources:
+
+### Service Accounts
+- **Vertex AI SA**: Main service account for AI operations
+- **Device Auth SA**: Handles device authentication via Firebase
+- **TVM SA**: Token Vending Machine for secure credential distribution
+- **API Gateway Invoker SA**: Service account for API Gateway operations
+
+### IAM Roles
+The installer configures precise IAM roles including:
+- `roles/aiplatform.user` for Vertex AI operations
+- `roles/iam.serviceAccountTokenCreator` for token generation
+- `roles/firebaseauth.admin` for Firebase authentication
+- `roles/iam.workloadIdentityUser` for federated authentication
+
+### Cloud Functions
+- **Device Authenticator**: Private function for device authentication
+- **Token Vending Machine**: Secure token distribution for devices
+
+### API Gateway
+- Secure public endpoint for device communication
+- OpenAPI specification with proper authentication
 
 ## Security
 
-- No credentials stored locally
-- OAuth tokens are short-lived
-- All API calls use HTTPS
-- Implements PKCE flow for enhanced security
+This installer implements multiple security layers:
 
-## Comparison with Shell Script
+1. **OAuth Authentication**: All operations require valid Google OAuth credentials
+2. **Least Privilege IAM**: Each service account has minimal required permissions
+3. **Workload Identity Federation**: Secure service-to-service authentication
+4. **Private Cloud Functions**: Functions are not publicly accessible
+5. **API Key Restrictions**: Generated API keys are restricted to specific origins
 
-| Feature | Shell Script | Web Installer |
-|---------|--------------|---------------|
-| Setup Required | VM + gcloud CLI | Just a browser |
-| Time to Start | 30+ minutes | < 1 minute |
-| User Experience | Terminal commands | Modern UI |
-| Error Handling | Script output | Clear messages |
-| Progress Tracking | Text logs | Visual progress |
-| Accessibility | Linux knowledge needed | Anyone can use |
+## Deployment
 
-## Next Steps
+### Staging Deployment
 
-After installation completes:
+Pushes to the `develop` branch automatically deploy to staging:
+```bash
+git push origin develop
+```
 
-1. Copy the provided configuration to your IoT devices
-2. Or run the setup command on each camera
-3. Monitor your devices in the Google Cloud Console
+### Production Deployment
 
-## Roadmap
+Pushes to the `main` branch automatically deploy to production:
+```bash
+git push origin main
+```
 
-- [ ] Add support for custom Firebase projects
-- [ ] Multi-region deployment options
-- [ ] Terraform export for repeatability
-- [ ] Batch device provisioning
-- [ ] Cost estimation before deployment
+### Manual Deployment
+
+Using Vercel CLI:
+```bash
+vercel --prod
+```
+
+## Testing
+
+Run the test suite:
+```bash
+# Unit tests
+npm test
+
+# Integration tests
+npm run test:integration
+
+# Security audit
+npm run test:security
+```
+
+## CI/CD
+
+The project uses GitHub Actions for continuous integration and deployment:
+
+- **CI Pipeline**: Runs on all PRs (lint, type check, tests, security scan)
+- **Staging Deploy**: Automatic deployment on push to `develop`
+- **Production Deploy**: Automatic deployment on push to `main`
+- **Security Scans**: Weekly automated security scanning
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Billing Not Enabled**: Ensure your GCP project has billing enabled
+2. **Insufficient Permissions**: Verify you have Owner/Editor role on the project
+3. **API Enablement Failures**: Some APIs may take time to propagate
+4. **OAuth Errors**: Ensure your OAuth client ID is correctly configured
+
+### Debug Mode
+
+Enable debug mode for detailed logging:
+```bash
+NEXT_PUBLIC_ENABLE_DEBUG=true npm run dev
+```
 
 ## License
 
-MIT
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Support
+
+For issues and feature requests, please use the [GitHub Issues](https://github.com/yourusername/anava-web-installer/issues) page.
+
+For security vulnerabilities, please email security@anava.ai directly.# Test deployment

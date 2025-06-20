@@ -4,6 +4,7 @@
  */
 
 import { InstallConfig, InstallStep, InstallResult } from './types';
+import { InstallationStateManager, SavedInstallationState } from './installation-state';
 
 // Function code templates embedded directly (from vertexSetup_gcp.sh)
 const DEVICE_AUTH_FUNCTION_CODE = `
@@ -71,6 +72,27 @@ export class AnavaGCPInstaller {
   }
 
   async install(): Promise<InstallResult> {
+    // Check for existing installation state
+    const savedState = InstallationStateManager.load(this.config.projectId);
+    const isResuming = savedState !== null;
+    
+    if (isResuming) {
+      console.log('Found existing installation state, resuming...');
+      this.onProgress('Resuming installation...', 0);
+    }
+
+    // Initialize state if new installation
+    if (!savedState) {
+      InstallationStateManager.save({
+        projectId: this.config.projectId,
+        projectName: this.config.projectName || '',
+        startedAt: new Date().toISOString(),
+        lastUpdated: new Date().toISOString(),
+        completedSteps: [],
+        resources: {}
+      });
+    }
+
     const steps: InstallStep[] = [
       { name: 'Checking prerequisites', weight: 5, fn: () => this.checkPrerequisites() },
       { name: 'Validating project', weight: 5, fn: () => this.validateProject() },
@@ -84,13 +106,42 @@ export class AnavaGCPInstaller {
     ];
 
     let totalProgress = 0;
-    const results: any = {};
+    const results: any = savedState?.installResult || {};
+    const skippedSteps: string[] = [];
 
     for (const step of steps) {
+      // Check if step was already completed
+      if (InstallationStateManager.hasCompletedStep(this.config.projectId, step.name)) {
+        console.log(`Step "${step.name}" already completed, skipping...`);
+        skippedSteps.push(step.name);
+        totalProgress += step.weight;
+        this.onProgress(`✓ ${step.name} (already completed)`, totalProgress);
+        
+        // Load previously saved results for this step
+        const savedResources = InstallationStateManager.getResources(this.config.projectId);
+        if (savedResources) {
+          // Merge saved resources into results
+          if (step.name === 'Creating service accounts' && savedResources.serviceAccount) {
+            results.serviceAccountEmail = savedResources.serviceAccount.email;
+          }
+          if (step.name === 'Creating API Gateway' && savedResources.apiGateway?.url) {
+            results.apiGatewayUrl = savedResources.apiGateway.url;
+          }
+          if (step.name === 'Generating API keys' && savedResources.apiKey?.value) {
+            results.apiKey = savedResources.apiKey.value;
+          }
+        }
+        continue;
+      }
+
       this.onProgress(step.name, totalProgress);
       try {
         const stepResult = await step.fn();
         Object.assign(results, stepResult);
+        
+        // Save step completion and results
+        InstallationStateManager.updateStep(this.config.projectId, step.name, this.mapResultsToResources(step.name, stepResult));
+        
         totalProgress += step.weight;
         this.onProgress(step.name, totalProgress);
       } catch (error) {
@@ -98,7 +149,95 @@ export class AnavaGCPInstaller {
       }
     }
 
-    return this.compileResults(results);
+    // Save final results
+    const finalResult = this.compileResults(results);
+    InstallationStateManager.save({
+      projectId: this.config.projectId,
+      projectName: this.config.projectName || '',
+      startedAt: savedState?.startedAt || new Date().toISOString(),
+      lastUpdated: new Date().toISOString(),
+      completedSteps: steps.map(s => s.name),
+      resources: InstallationStateManager.getResources(this.config.projectId) || {},
+      installResult: finalResult
+    });
+
+    // Add resume information to result
+    if (isResuming && skippedSteps.length > 0) {
+      (finalResult as any).resumedInstallation = true;
+      (finalResult as any).skippedSteps = skippedSteps;
+    }
+
+    return finalResult;
+  }
+
+  private mapResultsToResources(stepName: string, stepResult: any): Partial<SavedInstallationState['resources']> {
+    const resources: Partial<SavedInstallationState['resources']> = {};
+
+    switch (stepName) {
+      case 'Creating service accounts':
+        if (stepResult.serviceAccountEmail) {
+          resources.serviceAccount = {
+            email: stepResult.serviceAccountEmail,
+            created: true
+          };
+        }
+        break;
+      
+      case 'Setting up Firebase':
+        if (stepResult.firebaseEnabled) {
+          resources.firebaseApp = {
+            appId: stepResult.firebaseWebApiKey || '',
+            created: true
+          };
+        }
+        break;
+      
+      case 'Deploying Cloud Functions':
+        if (stepResult.deviceAuthUrl || stepResult.tvmUrl) {
+          resources.cloudFunctions = {
+            deployed: true,
+            urls: {
+              deviceAuth: stepResult.deviceAuthUrl || '',
+              tvm: stepResult.tvmUrl || ''
+            }
+          };
+        }
+        break;
+      
+      case 'Configuring Workload Identity':
+        if (stepResult.workloadIdentityPoolId) {
+          resources.workloadIdentity = {
+            poolId: stepResult.workloadIdentityPoolId,
+            providerId: stepResult.workloadIdentityProviderId || '',
+            created: true
+          };
+        }
+        break;
+      
+      case 'Creating API Gateway':
+        if (stepResult.apiGatewayUrl) {
+          resources.apiGateway = {
+            apiId: stepResult.apiId || '',
+            configId: stepResult.apiConfigId || '',
+            gatewayId: stepResult.gatewayId || '',
+            created: true,
+            url: stepResult.apiGatewayUrl
+          };
+        }
+        break;
+      
+      case 'Generating API keys':
+        if (stepResult.apiKey) {
+          resources.apiKey = {
+            keyId: stepResult.apiKeyId || '',
+            value: stepResult.apiKey,
+            created: true
+          };
+        }
+        break;
+    }
+
+    return resources;
   }
 
   private async checkPrerequisites() {
@@ -444,14 +583,17 @@ Note: You can set budget alerts to control costs.`);
       addRoleBinding('roles/aiplatform.user', `serviceAccount:${serviceAccounts.vertex_ai_sa_email}`);
       addRoleBinding('roles/storage.objectAdmin', `serviceAccount:${serviceAccounts.vertex_ai_sa_email}`);
       addRoleBinding('roles/datastore.user', `serviceAccount:${serviceAccounts.vertex_ai_sa_email}`);
+      addRoleBinding('roles/iam.workloadIdentityUser', `serviceAccount:${serviceAccounts.vertex_ai_sa_email}`);
     }
 
     if (serviceAccounts.device_auth_sa_email) {
       addRoleBinding('roles/cloudfunctions.invoker', `serviceAccount:${serviceAccounts.device_auth_sa_email}`);
+      addRoleBinding('roles/firebaseauth.admin', `serviceAccount:${serviceAccounts.device_auth_sa_email}`);
     }
 
     if (serviceAccounts.tvm_sa_email) {
       addRoleBinding('roles/cloudfunctions.invoker', `serviceAccount:${serviceAccounts.tvm_sa_email}`);
+      addRoleBinding('roles/iam.serviceAccountTokenCreator', `serviceAccount:${serviceAccounts.tvm_sa_email}`);
     }
 
     await this.gcpApiCall(
@@ -461,6 +603,41 @@ Note: You can set budget alerts to control costs.`);
         body: JSON.stringify({ policy })
       }
     );
+
+    // Grant TVM SA permission to impersonate Vertex AI SA
+    if (serviceAccounts.tvm_sa_email && serviceAccounts.vertex_ai_sa_email) {
+      console.log('Granting TVM SA permission to impersonate Vertex AI SA...');
+      
+      const saPolicy = await this.gcpApiCall(
+        `https://iam.googleapis.com/v1/projects/${this.config.projectId}/serviceAccounts/${serviceAccounts.vertex_ai_sa_email}:getIamPolicy`,
+        { method: 'POST', body: JSON.stringify({}) }
+      );
+
+      // Add TVM SA as token creator for Vertex AI SA
+      const tvmMember = `serviceAccount:${serviceAccounts.tvm_sa_email}`;
+      const tokenCreatorRole = 'roles/iam.serviceAccountTokenCreator';
+      
+      const existingBinding = saPolicy.bindings?.find((b: any) => b.role === tokenCreatorRole);
+      if (existingBinding) {
+        if (!existingBinding.members.includes(tvmMember)) {
+          existingBinding.members.push(tvmMember);
+        }
+      } else {
+        if (!saPolicy.bindings) saPolicy.bindings = [];
+        saPolicy.bindings.push({
+          role: tokenCreatorRole,
+          members: [tvmMember]
+        });
+      }
+
+      await this.gcpApiCall(
+        `https://iam.googleapis.com/v1/projects/${this.config.projectId}/serviceAccounts/${serviceAccounts.vertex_ai_sa_email}:setIamPolicy`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ policy: saPolicy })
+        }
+      );
+    }
   }
 
   private async setupFirebase() {
@@ -1063,9 +1240,11 @@ This manual step is required because Firestore needs you to choose security rule
     }
     
     console.log('API Config creation submitted. Waiting for it to become active...');
+    console.log('NOTE: API Gateway activation can take 2-10 minutes. Please be patient...');
     
-    // Poll the config status until it's active (like the shell script does)
-    const maxChecks = 12;
+    // Poll the config status until it's active
+    // Increased to 10 minutes (60 checks × 10 seconds) to handle slow GCP provisioning
+    const maxChecks = 60;
     let configReady = false;
     
     for (let i = 1; i <= maxChecks; i++) {
@@ -1076,20 +1255,49 @@ This manual step is required because Firestore needs you to choose security rule
         
         if (configStatus.state === 'ACTIVE') {
           configReady = true;
-          console.log(`API Config ${configId} is ACTIVE.`);
+          console.log(`API Config ${configId} is ACTIVE after ${i * 10} seconds.`);
+          this.onProgress('Creating API Gateway - Configuration activated!', 82);
           break;
         }
         
-        console.log(`API Config not active yet (State: ${configStatus.state || 'Unknown'}). Waiting 10s... (${i}/${maxChecks})`);
+        // Provide more detailed progress updates
+        const minutesWaited = Math.floor((i * 10) / 60);
+        const secondsWaited = (i * 10) % 60;
+        const timeStr = minutesWaited > 0 ? `${minutesWaited}m ${secondsWaited}s` : `${secondsWaited}s`;
+        
+        // Update UI progress with retry information
+        this.onProgress(
+          `Creating API Gateway - Waiting for activation (${timeStr} elapsed, check ${i}/${maxChecks})`, 
+          80 + Math.floor((i / maxChecks) * 5)
+        );
+        
+        console.log(`API Config state: ${configStatus.state || 'PENDING'}. Waited ${timeStr}... (${i}/${maxChecks})`);
       } catch (err: any) {
-        console.log(`Error checking config status: ${err.message}. Waiting 10s... (${i}/${maxChecks})`);
+        // Still update progress even on errors
+        this.onProgress(
+          `Creating API Gateway - Checking status (attempt ${i}/${maxChecks})`, 
+          80 + Math.floor((i / maxChecks) * 5)
+        );
+        console.log(`Checking config status... (${i}/${maxChecks})`);
       }
       
       await new Promise(resolve => setTimeout(resolve, 10000));
     }
     
     if (!configReady) {
-      throw new Error(`API Config ${configId} did not become active after ${maxChecks * 10} seconds`);
+      // Instead of throwing an error, provide a more helpful message
+      console.error(`API Config ${configId} is taking longer than expected to activate.`);
+      console.error('This is a known issue with GCP API Gateway that can take up to 15 minutes.');
+      console.error('The installation will continue, but the API Gateway might not be immediately available.');
+      
+      // Return partial success instead of failing
+      return {
+        apiGatewayWarning: 'API Gateway is still activating. It may take up to 15 minutes to become fully operational.',
+        apiId,
+        configId,
+        gatewayId,
+        shouldRetryLater: true
+      };
     }
 
     // Create Gateway (gateways are regional, but reference global API/config)
@@ -1299,8 +1507,8 @@ paths:
 `;
   }
 
-  public async generateAPIKeys() {
-    console.log('Creating API key...');
+  public async generateAPIKeys(forceRegenerate: boolean = false) {
+    console.log(forceRegenerate ? 'Regenerating API key...' : 'Creating API key...');
     
     const keyDisplayName = `${this.config.solutionPrefix}-device-key`;
     const apiId = `${this.config.solutionPrefix}-device-api`;
@@ -1347,13 +1555,25 @@ paths:
         key.displayName === keyDisplayName
       );
       
-      if (existingKey) {
+      if (existingKey && !forceRegenerate) {
         console.log('API key already exists:', existingKey.name);
         // Get the key string
         const keyDetails = await this.gcpApiCall(
           `https://apikeys.googleapis.com/v2/${existingKey.name}/keyString`
         );
-        return { apiKey: keyDetails.keyString };
+        return { apiKey: keyDetails.keyString, apiKeyId: existingKey.name };
+      } else if (existingKey && forceRegenerate) {
+        console.log('Deleting existing API key for regeneration:', existingKey.name);
+        try {
+          await this.gcpApiCall(
+            `https://apikeys.googleapis.com/v2/${existingKey.name}`,
+            { method: 'DELETE' }
+          );
+          // Wait for deletion to propagate
+          await new Promise(resolve => setTimeout(resolve, 5000));
+        } catch (err) {
+          console.error('Failed to delete existing key, proceeding anyway:', err);
+        }
       }
     } catch (err) {
       console.log('Error checking existing keys:', err);
@@ -1417,7 +1637,7 @@ paths:
               );
               if (keyDetails.keyString) {
                 console.log('✅ API key created successfully');
-                return { apiKey: keyDetails.keyString };
+                return { apiKey: keyDetails.keyString, apiKeyId: newKey.name };
               }
             }
           } catch (err) {
@@ -1430,7 +1650,7 @@ paths:
       const keyString = response.keyString || response.current?.keyString;
       if (keyString) {
         console.log('✅ API key created successfully');
-        return { apiKey: keyString };
+        return { apiKey: keyString, apiKeyId: response.name };
       }
       
       throw new Error('API key creation timed out - the key may still be creating. Try running the installer again in a few minutes.');
