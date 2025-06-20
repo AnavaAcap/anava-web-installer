@@ -56,7 +56,8 @@
       "Bash(vercel ls:*)",
       "Bash(vercel domains:*)",
       "Bash(vercel alias:*)",
-      "Bash(vercel:*)"
+      "Bash(vercel:*)",
+      "Bash(cat:*)"
     ],
     "deny": []
   }

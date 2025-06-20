@@ -36,12 +36,19 @@ import { GoogleOAuthProvider, useGoogleLogin } from '@react-oauth/google';
 import { FiSun, FiMoon, FiCheck, FiCopy, FiExternalLink } from 'react-icons/fi';
 import { AnavaGCPInstaller } from '../lib/gcp-installer';
 import { InstallStatus, InstallResult, GoogleProject } from '../lib/types';
+import { InstallationStateManager } from '../lib/installation-state';
 
 const GOOGLE_CLIENT_ID = (process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '').trim();
 const GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/cloud-platform',
   'https://www.googleapis.com/auth/firebase',
 ];
+
+// Debug logging
+if (typeof window !== 'undefined') {
+  console.log('Google Client ID configured:', GOOGLE_CLIENT_ID ? `${GOOGLE_CLIENT_ID.substring(0, 20)}...` : 'NOT SET');
+  console.log('Environment:', process.env.NODE_ENV);
+}
 
 function InstallerApp() {
   const [status, setStatus] = useState<InstallStatus>('ready');
@@ -55,9 +62,42 @@ function InstallerApp() {
   const [installResult, setInstallResult] = useState<InstallResult | null>(null);
   const [error, setError] = useState('');
   const [isRetryingApiKey, setIsRetryingApiKey] = useState(false);
+  const [hasIncompleteInstall, setHasIncompleteInstall] = useState(false);
+  const [resumeProjectId, setResumeProjectId] = useState('');
   
   const { colorMode, toggleColorMode } = useColorMode();
   const toast = useToast();
+
+  // Check for incomplete installation
+  const checkForIncompleteInstall = (projectId: string) => {
+    const savedState = InstallationStateManager.load(projectId);
+    if (savedState && savedState.completedSteps.length > 0 && savedState.completedSteps.length < 9) {
+      setHasIncompleteInstall(true);
+      setResumeProjectId(projectId);
+      
+      // Auto-populate settings from saved state
+      if (savedState.resources.apiGateway?.url) {
+        const match = savedState.resources.apiGateway.url.match(/gateway-(.+?)\./);
+        if (match) setRegion(match[1]);
+      }
+      
+      // Check if we can skip directly to completion
+      if (savedState.installResult && savedState.completedSteps.length === 9) {
+        setInstallResult(savedState.installResult);
+        setStatus('completed');
+        toast({
+          title: 'Previous installation found',
+          description: 'Showing results from your previous installation.',
+          status: 'info',
+          duration: 5000,
+          isClosable: true,
+        });
+      }
+    } else {
+      setHasIncompleteInstall(false);
+      setResumeProjectId('');
+    }
+  };
 
   // Define fetchProjects before useEffect
   const fetchProjects = async (token: string) => {
@@ -86,6 +126,7 @@ function InstallerApp() {
       
       if (data.projects?.length === 1) {
         setSelectedProject(data.projects[0].projectId);
+        checkForIncompleteInstall(data.projects[0].projectId);
       }
     } catch (err) {
       console.error('Error fetching projects:', err);
@@ -152,10 +193,13 @@ function InstallerApp() {
     setProgress(0);
     setError('');
 
+    const projectName = projects.find(p => p.projectId === selectedProject)?.name || '';
+    
     const installer = new AnavaGCPInstaller(
       accessToken,
       {
         projectId: selectedProject,
+        projectName,
         region,
         solutionPrefix,
       },
@@ -219,8 +263,8 @@ function InstallerApp() {
         () => {} // No progress callback needed
       );
       
-      // Just call the generateAPIKeys method directly
-      const apiKeyResult = await installer.generateAPIKeys();
+      // Call generateAPIKeys with force regenerate flag
+      const apiKeyResult = await installer.generateAPIKeys(true);
       
       if (apiKeyResult.apiKey) {
         // Update the install result with the new API key
@@ -340,7 +384,10 @@ function InstallerApp() {
               <Select
                 placeholder="Select a project"
                 value={selectedProject}
-                onChange={(e) => setSelectedProject(e.target.value)}
+                onChange={(e) => {
+                  setSelectedProject(e.target.value);
+                  checkForIncompleteInstall(e.target.value);
+                }}
               >
                 {projects.map((project) => (
                   <option key={project.projectId} value={project.projectId}>
@@ -373,14 +420,47 @@ function InstallerApp() {
               </Text>
             </FormControl>
 
-            <Button
-              colorScheme="blue"
-              size="lg"
-              onClick={handleInstall}
-              isDisabled={!selectedProject}
-            >
-              Start Installation
-            </Button>
+            {hasIncompleteInstall && selectedProject === resumeProjectId && (
+              <Alert status="info">
+                <AlertIcon />
+                <Box>
+                  <AlertTitle>Incomplete Installation Detected</AlertTitle>
+                  <AlertDescription>
+                    We found a previous installation attempt for this project. You can resume where you left off or start fresh.
+                  </AlertDescription>
+                </Box>
+              </Alert>
+            )}
+
+            <HStack spacing={4}>
+              <Button
+                colorScheme="blue"
+                size="lg"
+                onClick={handleInstall}
+                isDisabled={!selectedProject}
+              >
+                {hasIncompleteInstall && selectedProject === resumeProjectId ? 'Resume Installation' : 'Start Installation'}
+              </Button>
+              
+              {hasIncompleteInstall && selectedProject === resumeProjectId && (
+                <Button
+                  variant="outline"
+                  size="lg"
+                  onClick={() => {
+                    InstallationStateManager.clear();
+                    setHasIncompleteInstall(false);
+                    toast({
+                      title: 'Installation state cleared',
+                      description: 'You can now start a fresh installation.',
+                      status: 'info',
+                      duration: 3000,
+                    });
+                  }}
+                >
+                  Start Fresh
+                </Button>
+              )}
+            </HStack>
           </VStack>
         )}
 
@@ -430,6 +510,21 @@ function InstallerApp() {
                     {installResult.apiGatewayWarning}
                     <br />
                     You can continue with the setup. The API Gateway will become available shortly.
+                  </AlertDescription>
+                </Box>
+              </Alert>
+            )}
+
+            {(installResult as any).resumedInstallation && (
+              <Alert status="info">
+                <AlertIcon />
+                <Box>
+                  <AlertTitle>Installation Resumed</AlertTitle>
+                  <AlertDescription>
+                    Successfully resumed from previous attempt. 
+                    {(installResult as any).skippedSteps?.length > 0 && (
+                      <><br />Skipped {(installResult as any).skippedSteps.length} already completed steps.</>
+                    )}
                   </AlertDescription>
                 </Box>
               </Alert>
