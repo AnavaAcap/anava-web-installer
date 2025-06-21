@@ -1793,11 +1793,10 @@ paths:
               console.log('Waiting 30 seconds for managed service to propagate...');
               this.onProgress('Waiting for managed service to activate...', 97);
               await new Promise(resolve => setTimeout(resolve, 30000));
-            } else {
-              console.log('Managed service is already enabled');
-            }
           } catch (err: any) {
-            if (err.message.includes('403') || err.message.includes('404')) {
+            if (err.message.includes('already enabled')) {
+              console.log('✅ Managed service is already enabled');
+            } else if (err.message.includes('403') || err.message.includes('404')) {
               // Service might not exist, try to deploy service configuration first
               console.log('Service not found. Deploying service configuration...');
               this.onProgress('Deploying API Gateway service configuration...', 96);
