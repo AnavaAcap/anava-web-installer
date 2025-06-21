@@ -1224,10 +1224,10 @@ This manual step is required because Firestore needs you to choose security rule
     // Upload the object using base64 encoding due to fetch limitations
     console.log(`Uploading function source to gs://${bucketName}/${objectName}...`);
     
-    // For binary uploads, we need to use a different approach
-    // The GCS JSON API accepts base64-encoded data
+    // For binary uploads, we need to use the upload endpoint
+    // The GCS upload API requires using the upload URL path
     await this.gcpApiCall(
-      `https://storage.googleapis.com/storage/v1/b/${bucketName}/o?uploadType=multipart`,
+      `https://storage.googleapis.com/upload/storage/v1/b/${bucketName}/o?uploadType=multipart`,
       {
         method: 'POST',
         headers: {

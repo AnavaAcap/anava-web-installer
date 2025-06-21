@@ -104,7 +104,8 @@
       "WebFetch(domain:firebase.google.com)",
       "WebFetch(domain:docs.anthropic.com)",
       "mcp__multi-ai-collab__server_status",
-      "Bash(gcloud endpoints services deploy:*)"
+      "Bash(gcloud endpoints services deploy:*)",
+      "WebFetch(domain:installer.anava.ai)"
     ],
     "deny": []
   }
