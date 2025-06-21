@@ -351,13 +351,13 @@ function InstallerApp() {
           <VStack align="start" spacing={1}>
             <HStack align="baseline">
               <Heading size="xl">Anava Cloud Installer</Heading>
-              <Badge colorScheme="green" ml={2}>v2.3.7-API-MANAGED-SERVICE-FIX</Badge>
+              <Badge colorScheme="green" ml={2}>v2.1.3-RELIABLE</Badge>
             </HStack>
             <Text color="gray.500">
               Guided installation for Anava IoT Security Platform on Google Cloud
             </Text>
             <Text fontSize="xs" color="gray.400">
-              NOTE: v2.3.7 - Fix 409 retries + ensure managed service name retrieved before deployment</Text>
+              NOTE: v2.1.3 - Fixed API Gateway reliability by replicating bash script service registration sequence</Text>
           </VStack>
           <IconButton
             aria-label="Toggle color mode"

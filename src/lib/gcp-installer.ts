@@ -464,6 +464,48 @@ export class AnavaGCPInstaller {
     }
   }
 
+  private async pollServiceOperation(operationName: string, operationDescription: string): Promise<any> {
+    console.log(`Polling ${operationDescription} operation: ${operationName}`);
+    let status;
+    let pollCount = 0;
+    const maxPolls = 30; // 5 minutes max (10 seconds per poll)
+    
+    while (pollCount < maxPolls) {
+      try {
+        const operationResponse = await this.gcpApiCall(
+          `https://servicemanagement.googleapis.com/v1/${operationName}`,
+          { method: 'GET' }
+        );
+        
+        status = operationResponse;
+        
+        if (status.done) {
+          if (status.error) {
+            throw new Error(`${operationDescription} failed: ${status.error.message || JSON.stringify(status.error)}`);
+          }
+          console.log(`✅ ${operationDescription} completed successfully`);
+          return status;
+        }
+        
+        pollCount++;
+        console.log(`${operationDescription} still processing... (${pollCount}/${maxPolls})`);
+        await new Promise(resolve => setTimeout(resolve, 10000)); // Wait 10 seconds
+        
+      } catch (error: any) {
+        if (error.message.includes('404')) {
+          // Operation might not be found yet, retry
+          pollCount++;
+          console.log(`Operation not found yet, retrying... (${pollCount}/${maxPolls})`);
+          await new Promise(resolve => setTimeout(resolve, 10000));
+          continue;
+        }
+        throw error;
+      }
+    }
+    
+    throw new Error(`${operationDescription} timed out after ${maxPolls} attempts`);
+  }
+
   private async validateProject() {
     const projectId = this.config.projectId;
     const url = `https://cloudresourcemanager.googleapis.com/v1/projects/${projectId}`;
@@ -1551,15 +1593,52 @@ This manual step is required because Firestore needs you to choose security rule
     const openApiSpec = this.generateOpenAPISpec(apiDetails.managedService);
     
     // CRITICAL: Deploy the service configuration first (like gcloud endpoints services deploy)
-    // This creates the managed service that can then be enabled
+    // This properly registers the managed service that can then be enabled
+    // Following bash script sequence: Wait 30s after API creation, 10s before service ops
+    console.log('Waiting 30 seconds for API Gateway to fully initialize...');
+    await new Promise(resolve => setTimeout(resolve, 30000));
+    
+    console.log('Waiting 10 seconds for managed service registration...');
+    await new Promise(resolve => setTimeout(resolve, 10000));
+    
     if (apiDetails.managedService) {
       console.log(`Deploying service configuration for: ${apiDetails.managedService}`);
       this.onProgress('Deploying API Gateway service configuration...', 81);
       
       try {
-        // Use Service Management API to deploy the OpenAPI spec
-        // This is equivalent to: gcloud endpoints services deploy openapi.yaml
-        // The API expects a ConfigSource with files, not a direct openapi field
+        // Step 1: Check if service exists, create if needed (following gcloud endpoints services deploy)
+        let serviceExists = false;
+        try {
+          await this.gcpApiCall(
+            `https://servicemanagement.googleapis.com/v1/services/${apiDetails.managedService}`,
+            { method: 'GET' }
+          );
+          serviceExists = true;
+          console.log(`✅ Service ${apiDetails.managedService} already exists`);
+        } catch (err: any) {
+          if (err.message.includes('404')) {
+            console.log(`Service ${apiDetails.managedService} does not exist. Creating...`);
+            const createServiceResponse = await this.gcpApiCall(
+              'https://servicemanagement.googleapis.com/v1/services',
+              {
+                method: 'POST',
+                body: JSON.stringify({ serviceName: apiDetails.managedService })
+              }
+            );
+            
+            // Poll create service operation
+            if (createServiceResponse.name) {
+              console.log('Waiting for service creation to complete...');
+              await this.pollServiceOperation(createServiceResponse.name, 'Service creation');
+            }
+            serviceExists = true;
+          } else {
+            throw err;
+          }
+        }
+        
+        // Step 2: Submit the configuration (equivalent to uploading openapi.yaml)
+        console.log('Submitting service configuration...');
         const configResponse = await this.gcpApiCall(
           `https://servicemanagement.googleapis.com/v1/services/${apiDetails.managedService}/configs:submit`,
           {
@@ -1578,44 +1657,51 @@ This manual step is required because Firestore needs you to choose security rule
           }
         );
         
-        console.log('Service configuration submission initiated. Response:', configResponse);
-        
-        // The submit API returns an Operation, we should check if it's done
+        // Poll config submission operation
+        let configId: string | null = null;
         if (configResponse.name) {
-          console.log('Waiting for service configuration operation to complete...');
-          // Poll the operation status
-          let operationComplete = false;
-          let pollCount = 0;
-          const maxPolls = 12; // 2 minutes max
+          console.log('Waiting for configuration submission to complete...');
+          const completedOp = await this.pollServiceOperation(configResponse.name, 'Configuration submission');
           
-          while (!operationComplete && pollCount < maxPolls) {
-            await new Promise(resolve => setTimeout(resolve, 10000)); // Wait 10 seconds
-            try {
-              const opStatus = await this.gcpApiCall(
-                `https://servicemanagement.googleapis.com/v1/${configResponse.name}`
-              );
-              if (opStatus.done) {
-                operationComplete = true;
-                console.log('✅ Service configuration deployed successfully');
-              } else {
-                pollCount++;
-                console.log(`Service configuration still processing... (${pollCount}/${maxPolls})`);
-              }
-            } catch (err) {
-              console.log('Error checking operation status:', err);
-              pollCount++;
-            }
-          }
-          
-          if (!operationComplete) {
-            console.warn('⚠️  Service configuration operation is taking longer than expected');
+          // Extract config ID from the completed operation
+          if (completedOp.response && completedOp.response.name) {
+            configId = completedOp.response.name.split('/').pop();
+            console.log(`✅ Configuration submitted with ID: ${configId}`);
           }
         }
         
-        console.log('Waiting 30 seconds for service configuration to propagate...');
+        // Step 3: Create rollout (equivalent to making config active)
+        if (configId) {
+          console.log('Creating rollout to activate configuration...');
+          const rolloutResponse = await this.gcpApiCall(
+            `https://servicemanagement.googleapis.com/v1/services/${apiDetails.managedService}/rollouts`,
+            {
+              method: 'POST',
+              body: JSON.stringify({
+                trafficPercentStrategy: {
+                  percentages: {
+                    [configId]: 100
+                  }
+                },
+                serviceName: apiDetails.managedService
+              })
+            }
+          );
+          
+          // Poll rollout operation
+          if (rolloutResponse.name) {
+            console.log('Waiting for rollout to complete...');
+            await this.pollServiceOperation(rolloutResponse.name, 'Rollout creation');
+          }
+        }
+        
+        console.log('✅ Service configuration deployed successfully using proper endpoints deployment sequence');
+        
+        // Wait for service to fully register before enabling (following bash script timing)
+        console.log('Waiting 30 seconds for service registration to propagate...');
         await new Promise(resolve => setTimeout(resolve, 30000));
         
-        // Now enable the managed service
+        // Now enable the managed service (AFTER proper deployment)
         console.log(`Enabling managed service: ${apiDetails.managedService}`);
         this.onProgress('Enabling API Gateway managed service...', 82);
         
@@ -1633,7 +1719,7 @@ This manual step is required because Firestore needs you to choose security rule
           }
         }
         
-        // Wait for the service to fully propagate
+        // Wait for the service to fully propagate (following bash script)
         console.log('Waiting 30 seconds for managed service to propagate...');
         await new Promise(resolve => setTimeout(resolve, 30000));
         
@@ -1972,80 +2058,10 @@ paths:
     
     // For retries, we need to re-check/deploy the service configuration
     if (forceRegenerate) {
-      console.log('This is a retry - will check service configuration status...');
-      
-      // For retries, check if managed service is enabled
-      try {
-        const apiDetails = await this.gcpApiCall(
-          `https://apigateway.googleapis.com/v1/projects/${this.config.projectId}/locations/global/apis/${apiId}`
-        );
-        
-        if (apiDetails.managedService) {
-          console.log(`Ensuring managed service ${apiDetails.managedService} is enabled...`);
-          this.onProgress('Enabling API Gateway managed service...', 95);
-          
-          try {
-            // Don't check first - just try to enable it
-            // This matches the bash script behavior and avoids 403 errors
-            await this.gcpApiCall(
-              `https://serviceusage.googleapis.com/v1/projects/${this.config.projectId}/services/${apiDetails.managedService}:enable`,
-              { method: 'POST' }
-            );
-              
-              console.log('Waiting 30 seconds for managed service to propagate...');
-              this.onProgress('Waiting for managed service to activate...', 97);
-              await new Promise(resolve => setTimeout(resolve, 30000));
-          } catch (err: any) {
-            if (err.message.includes('already enabled')) {
-              console.log('✅ Managed service is already enabled');
-            } else if (err.message.includes('403') || err.message.includes('404')) {
-              // Service might not exist, try to deploy service configuration first
-              console.log('Service not found. Deploying service configuration...');
-              this.onProgress('Deploying API Gateway service configuration...', 96);
-              
-              try {
-                // Create OpenAPI spec and deploy it
-                const openApiSpec = this.generateOpenAPISpec(apiDetails.managedService);
-                
-                await this.gcpApiCall(
-                  `https://servicemanagement.googleapis.com/v1/services/${apiDetails.managedService}/configs:submit`,
-                  {
-                    method: 'POST',
-                    body: JSON.stringify({
-                      configSource: {
-                        files: [
-                          {
-                            filePath: 'openapi.yaml',
-                            fileContents: btoa(openApiSpec),
-                            fileType: 'OPEN_API_YAML'
-                          }
-                        ]
-                      }
-                    })
-                  }
-                );
-                console.log('✅ Service configuration deployed successfully');
-                console.log('Waiting 30 seconds for service configuration to propagate...');
-                await new Promise(resolve => setTimeout(resolve, 30000));
-                
-                // Now try to enable the service
-                console.log('Attempting to enable managed service after deployment...');
-                await this.gcpApiCall(
-                  `https://serviceusage.googleapis.com/v1/projects/${this.config.projectId}/services/${apiDetails.managedService}:enable`,
-                  { method: 'POST' }
-                );
-                console.log('✅ Managed service enabled successfully');
-                console.log('Waiting 30 seconds for managed service to propagate...');
-                await new Promise(resolve => setTimeout(resolve, 30000));
-              } catch (deployErr: any) {
-                console.warn('Failed to deploy/enable managed service:', deployErr.message);
-              }
-            }
-          }
-        }
-      } catch (err) {
-        console.warn('Could not check API details during retry:', err);
-      }
+      console.log('This is a retry - managed service should already be properly deployed...');
+      // No need to re-enable service here - the proper deployment sequence handles this
+      console.log('Waiting 10 seconds before retrying API key creation...');
+      await new Promise(resolve => setTimeout(resolve, 10000));
     }
     
     // First, get the managed service name from the API Gateway API
