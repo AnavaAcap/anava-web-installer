@@ -67,7 +67,8 @@
       "Bash(git merge:*)",
       "Bash(node:*)",
       "Bash(sed:*)",
-      "Bash(npx jest:*)"
+      "Bash(npx jest:*)",
+      "Bash(echo:*)"
     ],
     "deny": []
   }

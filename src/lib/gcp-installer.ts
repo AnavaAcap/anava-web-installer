@@ -1675,6 +1675,11 @@ This manual step is required because Firestore needs you to choose security rule
       );
     }
 
+    // CRITICAL: Wait 90 seconds after gateway is active (like bash script does)
+    console.log('Waiting 90 seconds for API Gateway to fully propagate (matching vertexSetup_gcp.sh)...');
+    this.onProgress('Waiting for API Gateway to fully propagate...', 85);
+    await new Promise(resolve => setTimeout(resolve, 90000));
+    
     return { 
       apiGatewayUrl: `https://${gateway.defaultHostname}`,
       managedService: apiDetails.managedService 
@@ -1763,20 +1768,9 @@ paths:
     const keyDisplayName = `${this.config.solutionPrefix}-device-key`;
     const apiId = `${this.config.solutionPrefix}-device-api`;
     
-    // Only wait for new installations, not retries
-    if (!forceRegenerate) {
-      // Wait longer for API Gateway to be fully ready (increased from 30s to 120s)
-      console.log('Waiting for API Gateway to be fully ready before creating API key...');
-      this.onProgress('Waiting for API Gateway to stabilize before creating API key...', 95);
-      
-      // Wait 2 minutes with progress updates every 10 seconds
-      for (let i = 0; i < 12; i++) {
-        await new Promise(resolve => setTimeout(resolve, 10000));
-        const secondsWaited = (i + 1) * 10;
-        this.onProgress(`Waiting for API Gateway... (${secondsWaited}s/120s)`, 95 + Math.floor((i / 12) * 2));
-      }
-    } else {
-      console.log('Skipping wait time for API key retry...');
+    // For retries, we need to re-check/deploy the service configuration
+    if (forceRegenerate) {
+      console.log('This is a retry - will check service configuration status...');
       
       // For retries, check if managed service is enabled
       try {
@@ -1785,23 +1779,16 @@ paths:
         );
         
         if (apiDetails.managedService) {
-          console.log(`Checking if managed service ${apiDetails.managedService} is enabled...`);
-          this.onProgress('Checking API Gateway managed service status...', 95);
+          console.log(`Ensuring managed service ${apiDetails.managedService} is enabled...`);
+          this.onProgress('Enabling API Gateway managed service...', 95);
           
           try {
-            // Check if the service is enabled
-            const serviceStatus = await this.gcpApiCall(
-              `https://serviceusage.googleapis.com/v1/projects/${this.config.projectId}/services/${apiDetails.managedService}`
+            // Don't check first - just try to enable it
+            // This matches the bash script behavior and avoids 403 errors
+            await this.gcpApiCall(
+              `https://serviceusage.googleapis.com/v1/projects/${this.config.projectId}/services/${apiDetails.managedService}:enable`,
+              { method: 'POST' }
             );
-            
-            if (serviceStatus.state !== 'ENABLED') {
-              console.log('Managed service is not enabled. Enabling now...');
-              this.onProgress('Enabling API Gateway managed service...', 96);
-              
-              await this.gcpApiCall(
-                `https://serviceusage.googleapis.com/v1/projects/${this.config.projectId}/services/${apiDetails.managedService}:enable`,
-                { method: 'POST' }
-              );
               
               console.log('Waiting 30 seconds for managed service to propagate...');
               this.onProgress('Waiting for managed service to activate...', 97);
