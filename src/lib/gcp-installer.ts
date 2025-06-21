@@ -995,7 +995,17 @@ This manual step is required because Firestore needs you to choose security rule
         }
       }
       
-      // Create the function using Cloud Functions v2 API with inline source
+      // Create storage source for the function
+      const bucketName = `${this.config.projectId}-gcf-sources`;
+      const objectName = `${fn.name}-${Date.now()}.zip`;
+      
+      // Create a zip file in memory with the function code
+      const zipContent = await this.createFunctionZip(fn.code, 'functions-framework>=3.1.0\nfirebase-admin>=6.1.0\nrequests>=2.28.0');
+      
+      // Upload to GCS
+      await this.uploadToGCS(bucketName, objectName, zipContent);
+      
+      // Create the function using Cloud Functions v2 API with storage source
       const functionConfig = {
         name: `projects/${this.config.projectId}/locations/${this.config.region}/functions/${fn.name}`,
         description: `${fn.name} function for Anava IoT platform`,
@@ -1003,11 +1013,9 @@ This manual step is required because Firestore needs you to choose security rule
           runtime: fn.runtime,
           entryPoint: fn.entryPoint,
           source: {
-            inlineSource: {
-              files: {
-                'main.py': fn.code,
-                'requirements.txt': 'functions-framework>=3.1.0\nfirebase-admin>=6.1.0\nrequests>=2.28.0'
-              }
+            storageSource: {
+              bucket: bucketName,
+              object: objectName
             }
           }
         },
@@ -1057,6 +1065,143 @@ This manual step is required because Firestore needs you to choose security rule
     }
 
     return functionUrls;
+  }
+
+  private async createFunctionZip(pythonCode: string, requirements: string): Promise<Buffer> {
+    // Create a simple tar.gz file with main.py and requirements.txt
+    // This is a browser-compatible implementation
+    
+    const encoder = new TextEncoder();
+    const files = [
+      { name: 'main.py', content: encoder.encode(pythonCode) },
+      { name: 'requirements.txt', content: encoder.encode(requirements) }
+    ];
+    
+    // Create a simple uncompressed tar format
+    const blocks: Uint8Array[] = [];
+    
+    for (const file of files) {
+      // Create tar header (512 bytes)
+      const header = new Uint8Array(512);
+      const headerView = new DataView(header.buffer);
+      
+      // File name (0-99)
+      const nameBytes = encoder.encode(file.name);
+      header.set(nameBytes, 0);
+      
+      // File mode (100-107) - 0644 in octal
+      header.set(encoder.encode('0000644'), 100);
+      
+      // UID (108-115) - 0
+      header.set(encoder.encode('0000000'), 108);
+      
+      // GID (116-123) - 0
+      header.set(encoder.encode('0000000'), 116);
+      
+      // File size in octal (124-135)
+      const sizeOctal = file.content.length.toString(8).padStart(11, '0');
+      header.set(encoder.encode(sizeOctal), 124);
+      
+      // Modification time in octal (136-147)
+      const mtimeOctal = Math.floor(Date.now() / 1000).toString(8).padStart(11, '0');
+      header.set(encoder.encode(mtimeOctal), 136);
+      
+      // Checksum placeholder (148-155)
+      header.set(encoder.encode('        '), 148);
+      
+      // Type flag (156) - '0' for regular file
+      header[156] = 48; // ASCII '0'
+      
+      // Calculate checksum
+      let checksum = 0;
+      for (let i = 0; i < 512; i++) {
+        checksum += header[i];
+      }
+      const checksumOctal = checksum.toString(8).padStart(6, '0') + '\0 ';
+      header.set(encoder.encode(checksumOctal), 148);
+      
+      blocks.push(header);
+      blocks.push(file.content);
+      
+      // Add padding to 512-byte boundary
+      const padding = 512 - (file.content.length % 512);
+      if (padding < 512) {
+        blocks.push(new Uint8Array(padding));
+      }
+    }
+    
+    // Add two 512-byte blocks of zeros to end the archive
+    blocks.push(new Uint8Array(1024));
+    
+    // Combine all blocks
+    const totalLength = blocks.reduce((sum, block) => sum + block.length, 0);
+    const tarData = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const block of blocks) {
+      tarData.set(block, offset);
+      offset += block.length;
+    }
+    
+    // For now, return uncompressed tar as Buffer
+    // In a production environment, you might want to add gzip compression
+    return Buffer.from(tarData);
+  }
+
+  private async uploadToGCS(bucketName: string, objectName: string, content: Buffer): Promise<void> {
+    // First, ensure the bucket exists
+    try {
+      await this.gcpApiCall(
+        `https://storage.googleapis.com/storage/v1/b/${bucketName}`
+      );
+    } catch (err: any) {
+      if (err.message.includes('404')) {
+        // Create the bucket
+        console.log(`Creating GCS bucket ${bucketName}...`);
+        await this.gcpApiCall(
+          `https://storage.googleapis.com/storage/v1/b?project=${this.config.projectId}`,
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              name: bucketName,
+              location: this.config.region,
+              storageClass: 'STANDARD'
+            })
+          }
+        );
+      } else {
+        throw err;
+      }
+    }
+    
+    // Upload the object using base64 encoding due to fetch limitations
+    console.log(`Uploading function source to gs://${bucketName}/${objectName}...`);
+    
+    // For binary uploads, we need to use a different approach
+    // The GCS JSON API accepts base64-encoded data
+    await this.gcpApiCall(
+      `https://storage.googleapis.com/storage/v1/b/${bucketName}/o?uploadType=multipart`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'multipart/related; boundary=foo_bar_baz'
+        },
+        body: [
+          '--foo_bar_baz',
+          'Content-Type: application/json; charset=UTF-8',
+          '',
+          JSON.stringify({
+            name: objectName,
+            contentType: 'application/zip'
+          }),
+          '--foo_bar_baz',
+          'Content-Type: application/zip',
+          'Content-Transfer-Encoding: base64',
+          '',
+          content.toString('base64'),
+          '--foo_bar_baz--'
+        ].join('\r\n')
+      }
+    );
   }
 
   private async grantFunctionInvokerPermissions(functionName: string) {
